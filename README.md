@@ -17,15 +17,22 @@ go-chromatix2libcamera modules  com.qti.tuned.<sensor>.bin   # list tuning modul
 go-chromatix2libcamera symbols  -name 'cc13' <file>          # list parameter elements
 go-chromatix2libcamera hex      <file> <id|name>             # raw data, as 32-bit words
 go-chromatix2libcamera decode   <file> gamma15_ope           # decode a module, as JSON
-go-chromatix2libcamera convert  com.qti.tuned.<sensor>.bin > <sensor>.yaml
+go-chromatix2libcamera convert  -module com.qti.sensormodule.<module>.bin \
+                                com.qti.tuned.<sensor>.bin > <sensor>.yaml
 ```
 
-`convert` currently writes the front-end black level (`demuxblklevel14`) as
-libcamera's `BlackLevel` and the colour correction matrices (`cc13`) as its
-`Ccm`. Chromatix selects both by exposure (and DRC gain, flash, ...) as well as
-colour temperature, while libcamera's software ISP indexes by colour
-temperature only, so one exposure region is chosen: `-lux-idx` (Qualcomm lux index, higher
-is darker; default 250, ordinary indoor light) and `-drc-gain` (default 1).
+`convert` writes the front-end black level (`demuxblklevel14`) as libcamera's
+`BlackLevel`, the colour correction matrices (`cc13`) as `Ccm`, the output
+curve (`gamma15`) as `Adjust`'s `toneCurve`, and with `-module` the lens
+actuator's travel as `Af`'s `map`. Chromatix selects most tables by exposure
+(and DRC gain, flash, ...) as well as colour temperature, while libcamera's
+software ISP indexes by colour temperature only, so one exposure region is
+chosen: `-lux-idx` (Qualcomm lux index, higher is darker; default 250,
+ordinary indoor light) and `-drc-gain` (default 1).
+
+`toneCurve` is not in upstream libcamera: it needs the software ISP change on
+the `softisp-af` branch of github.com/W-Floyd/libcamera ("software_isp: Apply
+the tone curve from a lookup table"). Without it, libcamera ignores the key.
 
 ## The format
 
@@ -44,9 +51,10 @@ data exactly fails to decode.
 
 | module | version | decoded | converted to |
 |---|---|---|---|
-| `gamma15` | 1.5.0 | yes | (needs a curve in libcamera's software ISP) |
+| `gamma15` | 1.5.0 | yes | `Adjust: toneCurve` (see above) |
 | `cc13` | 1.3.0 | yes | `Ccm` |
 | `demuxblklevel14` (TFE) | 1.4.0 | yes (layout inferred, no public XSD) | `BlackLevel` |
+| `actuatorDriver` (sensor module) | 1.0.0 | yes (one slot more than the public XSD) | `Af: map`; the macro distance is assumed (10 cm) |
 
 ## Tests
 

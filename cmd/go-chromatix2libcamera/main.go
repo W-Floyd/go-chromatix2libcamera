@@ -27,7 +27,7 @@ Commands:
   hex <file> <id|name>...   dump a symbol's data as 32-bit words, naming
                             any word that matches a symbol id
   decode <file> <id|name>   decode a module with its schema, as JSON
-  convert [-lux-idx N] [-drc-gain G] <tuned.bin>
+  convert [-lux-idx N] [-drc-gain G] [-module sensormodule.bin] <tuned.bin>
                             write a libcamera software ISP tuning file
 `
 
@@ -176,11 +176,24 @@ func cmdConvert(args []string) error {
 	o := convert.DefaultOptions
 	fs.Float64Var(&o.LuxIdx, "lux-idx", o.LuxIdx, "Qualcomm lux index to take the exposure region from (higher is darker)")
 	fs.Float64Var(&o.DRCGain, "drc-gain", o.DRCGain, "DRC gain to take the DRC region from (1 is none)")
+	module := fs.String("module", "", "sensor module file (com.qti.sensormodule.*.bin), for the lens actuator")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
 		return fmt.Errorf("convert takes one tuned.bin file")
+	}
+	var af *convert.AFMap
+	if *module != "" {
+		mf, err := load(*module)
+		if err != nil {
+			return err
+		}
+		a, err := convert.AF(mf)
+		if err != nil {
+			return fmt.Errorf("%s: %w", *module, err)
+		}
+		af = &a
 	}
 	f, err := load(fs.Arg(0))
 	if err != nil {
@@ -194,6 +207,15 @@ func cmdConvert(args []string) error {
 		Source: []string{fmt.Sprintf("%s (lux index %g, DRC gain %g)",
 			filepath.Base(fs.Arg(0)), o.LuxIdx, o.DRCGain)},
 		CCMs: ccms,
+		AF:   af,
+	}
+	if *module != "" {
+		t.Source = append(t.Source, filepath.Base(*module))
+	}
+	if tc, err := convert.ToneCurve(f, o); err == nil {
+		t.ToneCurve = tc
+	} else {
+		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no tone curve:", err)
 	}
 	if bl, err := convert.BlackLevel(f, o); err == nil {
 		t.BlackLevel = bl

@@ -15,12 +15,21 @@ var schemas = map[string]map[uint64]*chromatix.Type{
 	"demuxblklevel14": {version(1, 4, 0): DemuxBlkLevel14},
 }
 
+// moduleSchemas are the sensor module file's top-level elements, which
+// carry no hardware block suffix.
+var moduleSchemas = map[string]*chromatix.Type{
+	"actuatorDriver": ActuatorDriver,
+}
+
 func version(major, minor, incr uint64) uint64 {
 	return major | minor<<16 | incr<<32
 }
 
 // Schema returns the schema for a top-level module, if one is known.
 func Schema(m chromatix.Symbol) (*chromatix.Type, bool) {
+	if t, ok := moduleSchemas[m.Name]; ok {
+		return t, true
+	}
 	base := m.Name
 	if i := strings.LastIndexByte(base, '_'); i > 0 {
 		base = base[:i]

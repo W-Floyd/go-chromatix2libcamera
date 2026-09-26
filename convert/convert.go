@@ -87,6 +87,110 @@ func CCMs(f *chromatix.File, o Options) ([]CCM, error) {
 	return dedupeCT(out), nil
 }
 
+// MacroDioptres is where the actuator's macro end is assumed to focus: the
+// sensor module gives lens travel in actuator codes, not distances.
+const MacroDioptres = 10.0 // 10 cm
+
+// AFMap is the lens travel from a sensor module's actuator tuning.
+type AFMap struct {
+	Actuator      string
+	InfinityCode  int
+	MacroCode     int
+	MacroDioptres float64
+}
+
+// AF returns the actuator's travel: stock drives the lens from initialCode
+// (infinity) through the tuned regions' steps to the macro end.
+func AF(f *chromatix.File) (AFMap, error) {
+	var drv *chromatix.Symbol
+	for _, m := range f.Modules() {
+		if m.Name == "actuatorDriver" {
+			mm := m
+			drv = &mm
+			break
+		}
+	}
+	if drv == nil {
+		return AFMap{}, fmt.Errorf("no actuatorDriver")
+	}
+	t, _ := isp.Schema(*drv)
+	v, err := f.Decode(*drv, t)
+	if err != nil {
+		return AFMap{}, err
+	}
+	o := v.(*chromatix.Object)
+
+	steps := 0.0
+	for _, r := range list(o, "regionParams") {
+		reg := r.(*chromatix.Object)
+		steps += (num(reg, "macroStepBoundary") - num(reg, "infinityStepBoundary")) *
+			num(reg, "codePerStep")
+	}
+	initial := int(num(o, "initialCode"))
+	return AFMap{
+		Actuator:      str(o, "actuatorName"),
+		InfinityCode:  initial,
+		MacroCode:     initial + int(steps+0.5),
+		MacroDioptres: MacroDioptres,
+	}, nil
+}
+
+// Point is a point of a tone curve, both coordinates in [0, 1].
+type Point struct{ X, Y float64 }
+
+// ToneCurve returns the gamma15 output curve for the selected region, as
+// libcamera's software ISP "toneCurve": linear light in, encoded value out.
+// Chromatix tables are per channel; the green one is used, since libcamera
+// applies one curve to all three (and tuned files usually have them equal).
+func ToneCurve(f *chromatix.File, o Options) ([]Point, error) {
+	m, err := baseModule(f, "gamma15")
+	if err != nil {
+		return nil, err
+	}
+	t, ok := isp.Schema(m)
+	if !ok {
+		return nil, fmt.Errorf("no schema for %s %s", m.Name, m.VersionString())
+	}
+	v, err := f.Decode(m, t)
+	if err != nil {
+		return nil, err
+	}
+	cct, err := selectRegion(v.(*chromatix.Object), o)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", m.Name, err)
+	}
+
+	// Colour temperature: the region containing daylight, or the first.
+	region := cct[0].(*chromatix.Object)
+	for _, e := range cct {
+		r := e.(*chromatix.Object)
+		t := obj(r, "cct_trigger")
+		if num(t, "start") <= 5000 && num(t, "end") >= 5000 {
+			region = r
+			break
+		}
+	}
+
+	var table []chromatix.Value
+	for _, e := range list(region, "cct_data") {
+		ch := e.(*chromatix.Object)
+		if c := str(ch, "channel"); c == "G" || c == "RGB" || table == nil {
+			table = list(ch, "table")
+		}
+	}
+	if len(table) != isp.GammaTableLen {
+		return nil, fmt.Errorf("%s: gamma table has %d entries", m.Name, len(table))
+	}
+
+	// Tables hold 8-bit output codes, whatever the input bit depth.
+	last := float64(len(table) - 1)
+	pts := make([]Point, len(table))
+	for i, y := range table {
+		pts[i] = Point{X: float64(i) / last, Y: y.(float64) / 255}
+	}
+	return pts, nil
+}
+
 // BlackLevel returns the front-end black level for the selected region, on
 // libcamera's 16-bit scale, averaged over the four Bayer channels.
 func BlackLevel(f *chromatix.File, o Options) (int, error) {
