@@ -251,6 +251,11 @@ func cmdConvert(args []string) error {
 		 */
 		if zones, err := convert.AECLumaTarget(f); err == nil {
 			t.LumaZones = zones
+			if h, err := convert.AECHistTarget(f); err == nil {
+				t.Hist = h
+			} else {
+				fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no histogram luma target:", err)
+			}
 		} else {
 			fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no AEC luma target:", err)
 		}

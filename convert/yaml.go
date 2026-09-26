@@ -3,6 +3,7 @@ package convert
 import (
 	"fmt"
 	"io"
+	"math"
 	"strings"
 )
 
@@ -22,6 +23,9 @@ type Tuning struct {
 	// LumaZones, if set, give Agc a mean luminance target: the
 	// brightest zone's, as the soft IPA has no lux estimate.
 	LumaZones []LumaZone
+	// Hist, if set with LumaZones, gives Agc the histogram adjustment of
+	// the target, again from the brightest zone.
+	Hist *HistTarget
 }
 
 // WriteYAML writes t as a libcamera software ISP tuning file.
@@ -68,6 +72,22 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 		}
 		b.WriteString("\n      # The brightest zone's, as a fraction of full scale:\n")
 		fmt.Fprintf(&b, "      meanTarget: %.4f\n", z.Target/255)
+		if h := t.Hist; h != nil && h.Enable && h.ADRC && len(h.Zones) > 0 {
+			hz := h.Zones[0]
+			b.WriteString("      # Histogram luma target, brightest zone (lux index ")
+			fmt.Fprintf(&b, "%g-%g): satRefHigh %g,\n", hz.Start, hz.End, hz.SatRefHigh)
+			b.WriteString("      # G ranges, ADRC gain; DRC gain by zone:")
+			for _, z := range h.Zones {
+				fmt.Fprintf(&b, " %.4g", math.Min(z.MaxDRCGain, z.MaxADRCGain))
+			}
+			b.WriteString("\n      histogram:\n")
+			fmt.Fprintf(&b, "        satRef: %.4f\n", hz.SatRefHigh/255)
+			fmt.Fprintf(&b, "        satRange: [ %.4g, %.4g ]\n", hz.SatPushdownRange[1][0], hz.SatPushdownRange[1][1])
+			fmt.Fprintf(&b, "        pushupRange: [ %.4g, %.4g ]\n", hz.SatPushupRange[1][0], hz.SatPushupRange[1][1])
+			fmt.Fprintf(&b, "        targetAdj: [ %.4g, %.4g ]\n", hz.MinTargetAdjRatio, hz.MaxTargetAdjRatio)
+			fmt.Fprintf(&b, "        maxDrcGain: %.4g\n", math.Min(hz.MaxDRCGain, hz.MaxADRCGain))
+			fmt.Fprintf(&b, "        filter: %.4g\n", h.Filter)
+		}
 	}
 	if t.AF != nil && len(t.AF.Points) >= 2 {
 		fmt.Fprintf(&b, "  # %s: %s\n", t.AF.Actuator, t.AF.Source)
