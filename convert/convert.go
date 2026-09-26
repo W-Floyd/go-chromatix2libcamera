@@ -87,58 +87,6 @@ func CCMs(f *chromatix.File, o Options) ([]CCM, error) {
 	return dedupeCT(out), nil
 }
 
-// DefaultMacroDioptres is where the actuator's macro end is assumed to
-// focus when nothing better is known: the sensor module gives lens travel
-// in actuator codes, not distances. 10 dioptres is 10 cm, a typical phone
-// module's minimum focus distance.
-const DefaultMacroDioptres = 10.0
-
-// AFMap is the lens travel from a sensor module's actuator tuning.
-type AFMap struct {
-	Actuator      string
-	InfinityCode  int
-	MacroCode     int
-	MacroDioptres float64
-}
-
-// AF returns the actuator's travel: stock drives the lens from initialCode
-// (infinity) through the tuned regions' steps to the macro end, which is
-// taken to focus at macroDioptres (measured for the module, or
-// DefaultMacroDioptres).
-func AF(f *chromatix.File, macroDioptres float64) (AFMap, error) {
-	var drv *chromatix.Symbol
-	for _, m := range f.Modules() {
-		if m.Name == "actuatorDriver" {
-			mm := m
-			drv = &mm
-			break
-		}
-	}
-	if drv == nil {
-		return AFMap{}, fmt.Errorf("no actuatorDriver")
-	}
-	t, _ := isp.Schema(*drv)
-	v, err := f.Decode(*drv, t)
-	if err != nil {
-		return AFMap{}, err
-	}
-	o := v.(*chromatix.Object)
-
-	steps := 0.0
-	for _, r := range list(o, "regionParams") {
-		reg := r.(*chromatix.Object)
-		steps += (num(reg, "macroStepBoundary") - num(reg, "infinityStepBoundary")) *
-			num(reg, "codePerStep")
-	}
-	initial := int(num(o, "initialCode"))
-	return AFMap{
-		Actuator:      str(o, "actuatorName"),
-		InfinityCode:  initial,
-		MacroCode:     initial + int(steps+0.5),
-		MacroDioptres: macroDioptres,
-	}, nil
-}
-
 // Point is a point of a tone curve, both coordinates in [0, 1].
 type Point struct{ X, Y float64 }
 

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/W-Floyd/go-chromatix2libcamera/calibration"
 	"github.com/W-Floyd/go-chromatix2libcamera/chromatix"
 	"github.com/W-Floyd/go-chromatix2libcamera/convert"
 	"github.com/W-Floyd/go-chromatix2libcamera/isp"
@@ -27,7 +28,8 @@ Commands:
   hex <file> <id|name>...   dump a symbol's data as 32-bit words, naming
                             any word that matches a symbol id
   decode <file> <id|name>   decode a module with its schema, as JSON
-  convert [-lux-idx N] [-drc-gain G] [-module sensormodule.bin] <tuned.bin>
+  convert [-lux-idx N] [-drc-gain G] [-module sensormodule.bin
+          [-eeprom image] [-macro-dioptres D]] <tuned.bin>
                             write a libcamera software ISP tuning file
 `
 
@@ -178,7 +180,8 @@ func cmdConvert(args []string) error {
 	fs.Float64Var(&o.DRCGain, "drc-gain", o.DRCGain, "DRC gain to take the DRC region from (1 is none)")
 	module := fs.String("module", "", "sensor module file (com.qti.sensormodule.*.bin), for the lens actuator")
 	macro := fs.Float64("macro-dioptres", convert.DefaultMacroDioptres,
-		"distance, in dioptres (1/m), the actuator's macro end focuses at; measure it per module")
+		"distance, in dioptres (1/m), the actuator's macro end focuses at, when the calibration gives no distances")
+	eeprom := fs.String("eeprom", "", "the module's EEPROM image, for per-unit calibration (needs -module)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -186,16 +189,31 @@ func cmdConvert(args []string) error {
 		return fmt.Errorf("convert takes one tuned.bin file")
 	}
 	var af *convert.AFMap
+	var sources []string
 	if *module != "" {
 		mf, err := load(*module)
 		if err != nil {
 			return err
 		}
-		a, err := convert.AF(mf, *macro)
+		sources = append(sources, filepath.Base(*module))
+		act, err := convert.ActuatorFromFile(mf)
 		if err != nil {
 			return fmt.Errorf("%s: %w", *module, err)
 		}
+		var cal *calibration.AF
+		if *eeprom != "" {
+			c, err := readCalibration(mf, *eeprom)
+			if err != nil {
+				return err
+			}
+			sources = append(sources, fmt.Sprintf("%s (%s, module %s)",
+				filepath.Base(*eeprom), c.Format, c.ModuleID))
+			cal = c.AF
+		}
+		a := convert.BuildAFMap(act, cal, *macro)
 		af = &a
+	} else if *eeprom != "" {
+		return fmt.Errorf("-eeprom needs -module")
 	}
 	f, err := load(fs.Arg(0))
 	if err != nil {
@@ -211,9 +229,7 @@ func cmdConvert(args []string) error {
 		CCMs: ccms,
 		AF:   af,
 	}
-	if *module != "" {
-		t.Source = append(t.Source, filepath.Base(*module))
-	}
+	t.Source = append(t.Source, sources...)
 	if tc, err := convert.ToneCurve(f, o); err == nil {
 		t.ToneCurve = tc
 	} else {
@@ -225,6 +241,24 @@ func cmdConvert(args []string) error {
 		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no black level:", err)
 	}
 	return t.WriteYAML(os.Stdout)
+}
+
+// readCalibration parses a module EEPROM image, described by the sensor
+// module file, with whichever calibration format detects it.
+func readCalibration(module *chromatix.File, path string) (*calibration.Calibration, error) {
+	m, err := calibration.ModuleFromFile(module)
+	if err != nil {
+		return nil, fmt.Errorf("sensor module: %w", err)
+	}
+	image, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	c, err := calibration.Parse(m, image)
+	if err != nil {
+		return nil, fmt.Errorf("%s (EEPROM %s): %w", path, m.EEPROMName, err)
+	}
+	return c, nil
 }
 
 // lookup resolves a symbol id (decimal or 0x-prefixed) or an exact name,

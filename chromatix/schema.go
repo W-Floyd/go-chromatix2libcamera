@@ -112,6 +112,14 @@ func (f *File) Decode(s Symbol, t *Type) (Value, error) {
 	return v, err
 }
 
+// DecodePrefix decodes the start of a symbol's data with a schema that
+// covers only its leading fields, for large elements of which only the
+// beginning is needed. Prefer Decode, which also checks the schema's size.
+func (f *File) DecodePrefix(s Symbol, t *Type) (Value, error) {
+	v, _, err := f.decode(f.Data(s), t, s.Name)
+	return v, err
+}
+
 func (f *File) decode(d []byte, t *Type, path string) (Value, []byte, error) {
 	le := binary.LittleEndian
 	need := t.Slots() * slot

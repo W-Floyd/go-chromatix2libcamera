@@ -55,12 +55,16 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 		b.WriteString("      ]\n")
 	}
 	b.WriteString("  - Agc:\n")
-	if t.AF != nil {
-		fmt.Fprintf(&b, "  # %s: stock drives codes %d (infinity) to %d (macro); the macro\n",
-			t.AF.Actuator, t.AF.InfinityCode, t.AF.MacroCode)
-		fmt.Fprintf(&b, "  # distance, %g dioptres, is from -macro-dioptres.\n", t.AF.MacroDioptres)
-		fmt.Fprintf(&b, "  - Af:\n      map: [ 0.0, %d, %.1f, %d ]\n",
-			t.AF.InfinityCode, t.AF.MacroDioptres, t.AF.MacroCode)
+	if t.AF != nil && len(t.AF.Points) >= 2 {
+		fmt.Fprintf(&b, "  # %s: %s\n", t.AF.Actuator, t.AF.Source)
+		b.WriteString("  - Af:\n      map: [")
+		for i, p := range t.AF.Points {
+			if i > 0 {
+				b.WriteString(",")
+			}
+			fmt.Fprintf(&b, " %.3f, %d", p.Dioptres, p.Code)
+		}
+		b.WriteString(" ]\n")
 	}
 	b.WriteString("...\n")
 	_, err := io.WriteString(w, b.String())

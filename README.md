@@ -34,6 +34,26 @@ ordinary indoor light) and `-drc-gain` (default 1).
 the `softisp-af` branch of github.com/W-Floyd/libcamera ("software_isp: Apply
 the tone curve from a lookup table"). Without it, libcamera ignores the key.
 
+## Per-unit calibration (module EEPROM)
+
+Camera modules carry factory calibration in an EEPROM, and CamX uses it in
+place of parts of the tuning: notably, the actuator tuning's step table is a
+placeholder that CamX rescales to the EEPROM's infinity and macro codes. With
+`-eeprom <image>` (and `-module`), `convert` reads the image and builds `Af`'s
+map from the calibration: calibration points at known distances where there
+are some (a least-squares line through them, codes against dioptres, also
+places the macro code), extended at the macro end by the module's margin.
+
+EEPROM layouts are vendor-specific, so they sit behind the `calibration.Format`
+interface (`Detect`, `Parse`): vendor formats are tried first, and CamX's
+generic layout, driven by the sensor module's `EEPROMDriverData` memory map, is
+the fallback.
+
+| format | detected by | provides |
+|---|---|---|
+| `motorola-gt24p256c` | EEPROM name `mot_gt24p256c_s5kjns_eeprom`, size, CRC-16/BUYPASS of the module information block | AF infinity and macro codes; four AF calibration points (distance, code), CRC-checked |
+| `camx-generic` | `EEPROMDriverData` marks AF data available | AF infinity and macro codes at the memory map's offsets |
+
 ## The format
 
 A Chromatix parameter file is self-describing: a header, a section table, a
