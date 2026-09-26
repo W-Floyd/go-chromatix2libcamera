@@ -20,9 +20,11 @@ go-chromatix2libcamera decode   <file> gamma15_ope           # decode a module, 
 go-chromatix2libcamera convert  com.qti.tuned.<sensor>.bin > <sensor>.yaml
 ```
 
-`convert` currently writes colour correction matrices (`cc13`) into libcamera's
-`Ccm` algorithm. libcamera's software ISP indexes them by colour temperature
-only, so one exposure region is chosen: `-lux-idx` (Qualcomm lux index, higher
+`convert` currently writes the front-end black level (`demuxblklevel14`) as
+libcamera's `BlackLevel` and the colour correction matrices (`cc13`) as its
+`Ccm`. Chromatix selects both by exposure (and DRC gain, flash, ...) as well as
+colour temperature, while libcamera's software ISP indexes by colour
+temperature only, so one exposure region is chosen: `-lux-idx` (Qualcomm lux index, higher
 is darker; default 250, ordinary indoor light) and `-drc-gain` (default 1).
 
 ## The format
