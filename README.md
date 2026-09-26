@@ -44,6 +44,7 @@ data exactly fails to decode.
 |---|---|---|---|
 | `gamma15` | 1.5.0 | yes | (needs a curve in libcamera's software ISP) |
 | `cc13` | 1.3.0 | yes | `Ccm` |
+| `demuxblklevel14` (TFE) | 1.4.0 | yes (layout inferred, no public XSD) | `BlackLevel` |
 
 ## Tests
 

@@ -195,6 +195,11 @@ func cmdConvert(args []string) error {
 			filepath.Base(fs.Arg(0)), o.LuxIdx, o.DRCGain)},
 		CCMs: ccms,
 	}
+	if bl, err := convert.BlackLevel(f, o); err == nil {
+		t.BlackLevel = bl
+	} else {
+		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no black level:", err)
+	}
 	return t.WriteYAML(os.Stdout)
 }
 

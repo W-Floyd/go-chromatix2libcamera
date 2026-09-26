@@ -87,6 +87,42 @@ func CCMs(f *chromatix.File, o Options) ([]CCM, error) {
 	return dedupeCT(out), nil
 }
 
+// BlackLevel returns the front-end black level for the selected region, on
+// libcamera's 16-bit scale, averaged over the four Bayer channels.
+func BlackLevel(f *chromatix.File, o Options) (int, error) {
+	var mod *chromatix.Symbol
+	for _, m := range f.Modules() {
+		if m.Name == "demuxblklevel14_tfe" && (mod == nil || m.Group < mod.Group) {
+			mm := m
+			mod = &mm
+		}
+	}
+	if mod == nil {
+		return 0, fmt.Errorf("no demuxblklevel14_tfe module")
+	}
+	t, ok := isp.Schema(*mod)
+	if !ok {
+		return 0, fmt.Errorf("no schema for %s %s", mod.Name, mod.VersionString())
+	}
+	v, err := f.Decode(*mod, t)
+	if err != nil {
+		return 0, err
+	}
+	cct, err := selectRegion(v.(*chromatix.Object), o)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", mod.Name, err)
+	}
+	// The black level does not depend on colour temperature; take the
+	// first region.
+	sum := 0.0
+	levels := list(cct[0].(*chromatix.Object), "black_level")
+	for _, l := range levels {
+		sum += l.(float64)
+	}
+	mean := sum / float64(len(levels))
+	return int(mean*float64(uint(1)<<(16-isp.DemuxBlkLevelBits)) + 0.5), nil
+}
+
 // selectRegion walks a module's DRC gain -> HDR -> LED -> AEC trigger tree
 // and returns the colour temperature level of the selected region.
 func selectRegion(root *chromatix.Object, o Options) ([]chromatix.Value, error) {

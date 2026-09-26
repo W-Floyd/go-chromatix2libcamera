@@ -10,7 +10,9 @@ import (
 type Tuning struct {
 	// Source names what the data was generated from, for the header.
 	Source []string
-	CCMs   []CCM
+	// BlackLevel is on libcamera's 16-bit scale; 0 leaves it out.
+	BlackLevel int
+	CCMs       []CCM
 }
 
 // WriteYAML writes t as a libcamera software ISP tuning file.
@@ -23,6 +25,9 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 		fmt.Fprintf(&b, "#   %s\n", s)
 	}
 	b.WriteString("%YAML 1.1\n---\nversion: 1\nalgorithms:\n")
+	if t.BlackLevel > 0 {
+		fmt.Fprintf(&b, "  - BlackLevel:\n      blackLevel: %d\n", t.BlackLevel)
+	}
 	b.WriteString("  - Awb:\n")
 	if len(t.CCMs) > 0 {
 		b.WriteString("  - Ccm:\n      ccms:\n")

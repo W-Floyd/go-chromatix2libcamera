@@ -11,6 +11,8 @@ import (
 var schemas = map[string]map[uint64]*chromatix.Type{
 	"gamma15": {version(1, 5, 0): Gamma15},
 	"cc13":    {version(1, 3, 0): CC13},
+	// No public XSD; see DemuxBlkLevel14.
+	"demuxblklevel14": {version(1, 4, 0): DemuxBlkLevel14},
 }
 
 func version(major, minor, incr uint64) uint64 {
