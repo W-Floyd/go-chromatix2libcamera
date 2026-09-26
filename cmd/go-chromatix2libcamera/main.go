@@ -216,6 +216,9 @@ func cmdConvert(args []string) error {
 			cal = c.AF
 			if c.PDAF != nil {
 				pdaf = convert.PDAFFromCalibration(c.PDAF)
+				if off, ok := convert.PDAFOffsetFromModule(mf); ok {
+					pdaf.Offset = &off
+				}
 			}
 		}
 		a := convert.BuildAFMap(act, cal, *macro)

@@ -70,14 +70,18 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 		if p := t.PDAF; p != nil {
 			b.WriteString("      pdaf:\n")
 			fmt.Fprintf(&b, "        # %s\n", p.Source)
-			b.WriteString("        # Per PD pixel type gains (1.0 = none), grid points corner to\n")
-			b.WriteString("        # corner, named as the EEPROM names them.\n")
+			b.WriteString("        # Shading gains (1.0 = none) of the PD pixels that see the left\n")
+			b.WriteString("        # and the right pupil half, grid points corner to corner.\n")
 			fmt.Fprintf(&b, "        gainMap:\n          size: [ %d, %d ]\n", p.GainWidth, p.GainHeight)
 			writeGrid(&b, "left", p.GainLeft, p.GainWidth, "%.3f")
 			writeGrid(&b, "right", p.GainRight, p.GainWidth, "%.3f")
-			b.WriteString("        # Lens movement in actuator codes per pixel of phase, per region.\n")
+			b.WriteString("        # Lens movement in actuator codes per image pixel of phase, per region.\n")
 			fmt.Fprintf(&b, "        dcc:\n          size: [ %d, %d ]\n", p.DCCWidth, p.DCCHeight)
 			writeGrid(&b, "values", p.DCC, p.DCCWidth, "%.3f")
+			if p.Offset != nil {
+				b.WriteString("        # Phase offset correction, image pixels (sensor module)\n")
+				fmt.Fprintf(&b, "        offset: %.4f\n", *p.Offset)
+			}
 		}
 	}
 	b.WriteString("...\n")
