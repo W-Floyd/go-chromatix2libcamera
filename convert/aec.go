@@ -8,6 +8,10 @@ import (
 	"github.com/W-Floyd/go-chromatix2libcamera/chromatix"
 )
 
+// AECLumaFullScale is the full scale of AEC luma targets and brightness
+// references: aecMetering.xsd gives them the range [0,255].
+const AECLumaFullScale = 255.0
+
 // LumaZone is one lux zone of the AEC luma target: from lux index Start to
 // End (Qualcomm's lux index grows as the scene darkens), the mean luma
 // target, on an 8-bit linear scale.

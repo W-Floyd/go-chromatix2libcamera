@@ -4,6 +4,8 @@ package convert
 
 import (
 	"fmt"
+	"math"
+	"math/bits"
 	"sort"
 
 	"github.com/W-Floyd/go-chromatix2libcamera/chromatix"
@@ -134,11 +136,24 @@ func ToneCurve(f *chromatix.File, o Options) ([]Point, error) {
 		return nil, fmt.Errorf("%s: gamma table has %d entries", m.Name, len(table))
 	}
 
-	// Tables hold 8-bit output codes, whatever the input bit depth.
+	/*
+	 * The output codes' full scale: gamma_1_5_0.xsd gives the range as
+	 * [0,1023], but tuned files hold 8-bit codes too (the S5KJNS module's
+	 * top out at 255), so take the smallest 2^n - 1 the table fits in.
+	 */
+	maxCode := 0.0
+	for _, y := range table {
+		maxCode = math.Max(maxCode, y.(float64))
+	}
+	fullScale := float64(uint64(1)<<bits.Len64(uint64(maxCode)) - 1)
+	if fullScale <= 0 {
+		return nil, fmt.Errorf("%s: gamma table is all zero", m.Name)
+	}
+
 	last := float64(len(table) - 1)
 	pts := make([]Point, len(table))
 	for i, y := range table {
-		pts[i] = Point{X: float64(i) / last, Y: y.(float64) / 255}
+		pts[i] = Point{X: float64(i) / last, Y: y.(float64) / fullScale}
 	}
 	return pts, nil
 }

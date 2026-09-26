@@ -71,7 +71,7 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 			fmt.Fprintf(&b, " %g-%g: %g", lz.Start, lz.End, lz.Target)
 		}
 		b.WriteString("\n      # The brightest zone's, as a fraction of full scale:\n")
-		fmt.Fprintf(&b, "      meanTarget: %.4f\n", z.Target/255)
+		fmt.Fprintf(&b, "      meanTarget: %.4f\n", z.Target/AECLumaFullScale)
 		if h := t.Hist; h != nil && h.Enable && h.ADRC && len(h.Zones) > 0 {
 			hz := h.Zones[0]
 			b.WriteString("      # Histogram luma target, brightest zone (lux index ")
@@ -81,7 +81,7 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 				fmt.Fprintf(&b, " %.4g", math.Min(z.MaxDRCGain, z.MaxADRCGain))
 			}
 			b.WriteString("\n      histogram:\n")
-			fmt.Fprintf(&b, "        satRef: %.4f\n", hz.SatRefHigh/255)
+			fmt.Fprintf(&b, "        satRef: %.4f\n", hz.SatRefHigh/AECLumaFullScale)
 			fmt.Fprintf(&b, "        satRange: [ %.4g, %.4g ]\n", hz.SatPushdownRange[1][0], hz.SatPushdownRange[1][1])
 			fmt.Fprintf(&b, "        pushupRange: [ %.4g, %.4g ]\n", hz.SatPushupRange[1][0], hz.SatPushupRange[1][1])
 			fmt.Fprintf(&b, "        targetAdj: [ %.4g, %.4g ]\n", hz.MinTargetAdjRatio, hz.MaxTargetAdjRatio)
