@@ -1,0 +1,3 @@
+# Vendor tuning data is never committed.
+*.bin
+/go-chromatix2libcamera
