@@ -177,6 +177,8 @@ func cmdConvert(args []string) error {
 	fs.Float64Var(&o.LuxIdx, "lux-idx", o.LuxIdx, "Qualcomm lux index to take the exposure region from (higher is darker)")
 	fs.Float64Var(&o.DRCGain, "drc-gain", o.DRCGain, "DRC gain to take the DRC region from (1 is none)")
 	module := fs.String("module", "", "sensor module file (com.qti.sensormodule.*.bin), for the lens actuator")
+	macro := fs.Float64("macro-dioptres", convert.DefaultMacroDioptres,
+		"distance, in dioptres (1/m), the actuator's macro end focuses at; measure it per module")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -189,7 +191,7 @@ func cmdConvert(args []string) error {
 		if err != nil {
 			return err
 		}
-		a, err := convert.AF(mf)
+		a, err := convert.AF(mf, *macro)
 		if err != nil {
 			return fmt.Errorf("%s: %w", *module, err)
 		}

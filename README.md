@@ -54,7 +54,7 @@ data exactly fails to decode.
 | `gamma15` | 1.5.0 | yes | `Adjust: toneCurve` (see above) |
 | `cc13` | 1.3.0 | yes | `Ccm` |
 | `demuxblklevel14` (TFE) | 1.4.0 | yes (layout inferred, no public XSD) | `BlackLevel` |
-| `actuatorDriver` (sensor module) | 1.0.0 | yes (one slot more than the public XSD) | `Af: map`; the macro distance is assumed (10 cm) |
+| `actuatorDriver` (sensor module) | 1.0.0 | yes (one slot more than the public XSD) | `Af: map`; the macro end's distance is `-macro-dioptres` (default 10, i.e. 10 cm), since the module gives codes, not distances |
 
 ## Tests
 

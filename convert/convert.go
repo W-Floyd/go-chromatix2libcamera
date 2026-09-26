@@ -87,9 +87,11 @@ func CCMs(f *chromatix.File, o Options) ([]CCM, error) {
 	return dedupeCT(out), nil
 }
 
-// MacroDioptres is where the actuator's macro end is assumed to focus: the
-// sensor module gives lens travel in actuator codes, not distances.
-const MacroDioptres = 10.0 // 10 cm
+// DefaultMacroDioptres is where the actuator's macro end is assumed to
+// focus when nothing better is known: the sensor module gives lens travel
+// in actuator codes, not distances. 10 dioptres is 10 cm, a typical phone
+// module's minimum focus distance.
+const DefaultMacroDioptres = 10.0
 
 // AFMap is the lens travel from a sensor module's actuator tuning.
 type AFMap struct {
@@ -100,8 +102,10 @@ type AFMap struct {
 }
 
 // AF returns the actuator's travel: stock drives the lens from initialCode
-// (infinity) through the tuned regions' steps to the macro end.
-func AF(f *chromatix.File) (AFMap, error) {
+// (infinity) through the tuned regions' steps to the macro end, which is
+// taken to focus at macroDioptres (measured for the module, or
+// DefaultMacroDioptres).
+func AF(f *chromatix.File, macroDioptres float64) (AFMap, error) {
 	var drv *chromatix.Symbol
 	for _, m := range f.Modules() {
 		if m.Name == "actuatorDriver" {
@@ -131,7 +135,7 @@ func AF(f *chromatix.File) (AFMap, error) {
 		Actuator:      str(o, "actuatorName"),
 		InfinityCode:  initial,
 		MacroCode:     initial + int(steps+0.5),
-		MacroDioptres: MacroDioptres,
+		MacroDioptres: macroDioptres,
 	}, nil
 }
 

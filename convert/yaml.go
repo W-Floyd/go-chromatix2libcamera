@@ -58,7 +58,7 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 	if t.AF != nil {
 		fmt.Fprintf(&b, "  # %s: stock drives codes %d (infinity) to %d (macro); the macro\n",
 			t.AF.Actuator, t.AF.InfinityCode, t.AF.MacroCode)
-		fmt.Fprintf(&b, "  # distance, %g dioptres, is assumed, not calibrated.\n", t.AF.MacroDioptres)
+		fmt.Fprintf(&b, "  # distance, %g dioptres, is from -macro-dioptres.\n", t.AF.MacroDioptres)
 		fmt.Fprintf(&b, "  - Af:\n      map: [ 0.0, %d, %.1f, %d ]\n",
 			t.AF.InfinityCode, t.AF.MacroDioptres, t.AF.MacroCode)
 	}
