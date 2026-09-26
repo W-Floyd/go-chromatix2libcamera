@@ -19,6 +19,9 @@ type Tuning struct {
 	AF *AFMap
 	// PDAF, if set with AF, adds the module's PDAF calibration to Af.
 	PDAF *PDAF
+	// LumaZones, if set, give Agc a mean luminance target: the
+	// brightest zone's, as the soft IPA has no lux estimate.
+	LumaZones []LumaZone
 }
 
 // WriteYAML writes t as a libcamera software ISP tuning file.
@@ -57,6 +60,15 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 		b.WriteString("      ]\n")
 	}
 	b.WriteString("  - Agc:\n")
+	if len(t.LumaZones) > 0 {
+		z := t.LumaZones[0]
+		b.WriteString("      # AEC luma target (8-bit linear) by lux index zone:\n      #")
+		for _, lz := range t.LumaZones {
+			fmt.Fprintf(&b, " %g-%g: %g", lz.Start, lz.End, lz.Target)
+		}
+		b.WriteString("\n      # The brightest zone's, as a fraction of full scale:\n")
+		fmt.Fprintf(&b, "      meanTarget: %.4f\n", z.Target/255)
+	}
 	if t.AF != nil && len(t.AF.Points) >= 2 {
 		fmt.Fprintf(&b, "  # %s: %s\n", t.AF.Actuator, t.AF.Source)
 		b.WriteString("  - Af:\n      map: [")

@@ -244,6 +244,16 @@ func cmdConvert(args []string) error {
 	t.Source = append(t.Source, sources...)
 	if tc, err := convert.ToneCurve(f, o); err == nil {
 		t.ToneCurve = tc
+		/*
+		 * The luma target goes with the tone curve: the curve is made
+		 * for the exposure the target gives, and libcamera's default
+		 * target exposes brighter.
+		 */
+		if zones, err := convert.AECLumaTarget(f); err == nil {
+			t.LumaZones = zones
+		} else {
+			fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no AEC luma target:", err)
+		}
 	} else {
 		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no tone curve:", err)
 	}
