@@ -26,6 +26,8 @@ type Tuning struct {
 	// Hist, if set with LumaZones, gives Agc the histogram adjustment of
 	// the target, again from the brightest zone.
 	Hist *HistTarget
+	// LSC, if set, adds the Lsc algorithm's lens shading gains.
+	LSC *LSC
 }
 
 // WriteYAML writes t as a libcamera software ISP tuning file.
@@ -49,6 +51,16 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 			fmt.Fprintf(&b, "          ccm: [ %s, %s, %s,\n", f(m[0]), f(m[1]), f(m[2]))
 			fmt.Fprintf(&b, "                 %s, %s, %s,\n", f(m[3]), f(m[4]), f(m[5]))
 			fmt.Fprintf(&b, "                 %s, %s, %s ]\n", f(m[6]), f(m[7]), f(m[8]))
+		}
+	}
+	if l := t.LSC; l != nil && len(l.Sets) > 0 {
+		b.WriteString("  - Lsc:\n")
+		fmt.Fprintf(&b, "      grid: [ %d, %d ]\n      sets:\n", l.Width, l.Height)
+		for _, s := range l.Sets {
+			fmt.Fprintf(&b, "        - ct: %d\n", s.CT)
+			writeGridAt(&b, "          ", "r", s.R, l.Width, "%.3f")
+			writeGridAt(&b, "          ", "g", s.G, l.Width, "%.3f")
+			writeGridAt(&b, "          ", "b", s.B, l.Width, "%.3f")
 		}
 	}
 	b.WriteString("  - Adjust:\n")
@@ -123,10 +135,15 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 
 // writeGrid writes a row-major grid as a flow list, one row per line.
 func writeGrid(b *strings.Builder, key string, v []float64, width int, format string) {
-	fmt.Fprintf(b, "          %s: [\n", key)
+	writeGridAt(b, "          ", key, v, width, format)
+}
+
+// writeGridAt is writeGrid at an indent.
+func writeGridAt(b *strings.Builder, indent, key string, v []float64, width int, format string) {
+	fmt.Fprintf(b, "%s%s: [\n", indent, key)
 	for i, x := range v {
 		if i%width == 0 {
-			b.WriteString("           ")
+			b.WriteString(indent + " ")
 		}
 		b.WriteString(" " + fmt.Sprintf(format, x))
 		if i < len(v)-1 {
@@ -136,7 +153,7 @@ func writeGrid(b *strings.Builder, key string, v []float64, width int, format st
 			b.WriteString("\n")
 		}
 	}
-	b.WriteString("          ]\n")
+	b.WriteString(indent + "]\n")
 }
 
 func f(x float64) string {

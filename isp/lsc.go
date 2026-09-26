@@ -2,9 +2,13 @@ package isp
 
 import . "github.com/W-Floyd/go-chromatix2libcamera/chromatix"
 
-// lscGrid is the number of points in a lens shading gain table: a 17x13
-// grid spanning the image.
-const lscGrid = 17 * 13
+// LSCWidth x LSCHeight is the lens shading gain grid, spanning the image
+// (lsc_3_4_0.xsd's tables of 221 points).
+const (
+	LSCWidth  = 17
+	LSCHeight = 13
+	lscGrid   = LSCWidth * LSCHeight
+)
 
 // lscTables are a lens shading region's gain tables, one per Bayer channel.
 var lscTables = []Field{

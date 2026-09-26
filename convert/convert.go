@@ -36,7 +36,7 @@ type CCM struct {
 // baseModule returns the module of that base name from the default OPE
 // or IPE group: groups beyond those hold per-usecase overrides.
 func baseModule(f *chromatix.File, base string) (chromatix.Symbol, error) {
-	for _, suffix := range []string{"_ope", "_ipe", "_bps", "_ife"} {
+	for _, suffix := range []string{"_ope", "_ipe", "_bps", "_ife", "_tfe"} {
 		var best *chromatix.Symbol
 		for _, m := range f.Modules() {
 			if m.Name != base+suffix {
@@ -197,9 +197,13 @@ func BlackLevel(f *chromatix.File, o Options) (int, error) {
 // selectRegion walks a module's DRC gain -> HDR -> LED -> AEC trigger tree
 // and returns the colour temperature level of the selected region.
 func selectRegion(root *chromatix.Object, o Options) ([]chromatix.Value, error) {
-	aecByLux := str(root, "aec_exp_control") == "lux_idx"
+	return selectFromDRC(list(root, "core"), str(root, "aec_exp_control") == "lux_idx", o)
+}
 
-	drc, err := pick(list(root, "core"), "drc_gain", o.DRCGain, "start", "end")
+// selectFromDRC walks the tree from its DRC gain level down, for modules
+// whose tree has levels above it (lens shading starts at lens position).
+func selectFromDRC(core []chromatix.Value, aecByLux bool, o Options) ([]chromatix.Value, error) {
+	drc, err := pick(core, "drc_gain", o.DRCGain, "start", "end")
 	if err != nil {
 		return nil, err
 	}

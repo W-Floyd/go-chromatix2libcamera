@@ -262,6 +262,11 @@ func cmdConvert(args []string) error {
 	} else {
 		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no tone curve:", err)
 	}
+	if l, err := convert.LensShading(f, o); err == nil {
+		t.LSC = l
+	} else {
+		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no lens shading:", err)
+	}
 	if bl, err := convert.BlackLevel(f, o); err == nil {
 		t.BlackLevel = bl
 	} else {
