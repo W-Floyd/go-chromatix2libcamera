@@ -31,6 +31,8 @@ Commands:
   convert [-lux-idx N] [-drc-gain G] [-module sensormodule.bin
           [-eeprom image] [-macro-dioptres D]] <tuned.bin>
                             write a libcamera software ISP tuning file
+  calibration <sensormodule.bin> <eeprom>
+                            decode a module EEPROM image (AF, PDAF), as JSON
 `
 
 func main() {
@@ -51,6 +53,8 @@ func main() {
 		err = cmdDecode(args)
 	case "convert":
 		err = cmdConvert(args)
+	case "calibration":
+		err = cmdCalibration(args)
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:
@@ -189,6 +193,7 @@ func cmdConvert(args []string) error {
 		return fmt.Errorf("convert takes one tuned.bin file")
 	}
 	var af *convert.AFMap
+	var pdaf *convert.PDAF
 	var sources []string
 	if *module != "" {
 		mf, err := load(*module)
@@ -209,6 +214,9 @@ func cmdConvert(args []string) error {
 			sources = append(sources, fmt.Sprintf("%s (%s, module %s)",
 				filepath.Base(*eeprom), c.Format, c.ModuleID))
 			cal = c.AF
+			if c.PDAF != nil {
+				pdaf = convert.PDAFFromCalibration(c.PDAF)
+			}
 		}
 		a := convert.BuildAFMap(act, cal, *macro)
 		af = &a
@@ -228,6 +236,7 @@ func cmdConvert(args []string) error {
 			filepath.Base(fs.Arg(0)), o.LuxIdx, o.DRCGain)},
 		CCMs: ccms,
 		AF:   af,
+		PDAF: pdaf,
 	}
 	t.Source = append(t.Source, sources...)
 	if tc, err := convert.ToneCurve(f, o); err == nil {
@@ -241,6 +250,23 @@ func cmdConvert(args []string) error {
 		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no black level:", err)
 	}
 	return t.WriteYAML(os.Stdout)
+}
+
+func cmdCalibration(args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("calibration takes a sensor module file and an EEPROM image")
+	}
+	mf, err := load(args[0])
+	if err != nil {
+		return err
+	}
+	c, err := readCalibration(mf, args[1])
+	if err != nil {
+		return err
+	}
+	e := json.NewEncoder(os.Stdout)
+	e.SetIndent("", "  ")
+	return e.Encode(c)
 }
 
 // readCalibration parses a module EEPROM image, described by the sensor

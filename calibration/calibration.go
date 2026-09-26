@@ -1,6 +1,6 @@
 // Package calibration reads per-unit camera module calibration from the
-// module's EEPROM (OTP) image: auto focus actuator codes and, later, white
-// balance, lens shading and PDAF data.
+// module's EEPROM (OTP) image: auto focus actuator codes, PDAF gain and DCC
+// maps and, later, white balance and lens shading.
 //
 // EEPROM layouts are vendor-specific. Each layout is a Format; Parse tries
 // the registered formats' Detect in order and uses the first that claims
@@ -37,6 +37,38 @@ type AF struct {
 	MacroMargin    float64
 }
 
+// PDAF is a module's phase detection calibration, in Qualcomm's layout
+// (vendor EEPROM libraries hand CamX the same structure): a gain map per PD
+// pixel type and a defocus conversion coefficient (DCC) map.
+type PDAF struct {
+	// Version is the calibration's version as stored.
+	Version int
+	// DCCMode, GainMode and Orientation are the calibration's mode bytes.
+	DCCMode, GainMode, Orientation int
+	// GainWidth x GainHeight grid points span the whole image, corner to
+	// corner; row-major.
+	GainWidth, GainHeight int
+	// GainQ is the gains' fixed-point fraction bits. Layouts that do not
+	// store it set what the format implies.
+	GainQ int
+	// GainLeft and GainRight are per-PD-pixel-type gains, scaled by
+	// 1 << GainQ. They flatten each type's vignetting (about 1.0 at the
+	// optical centre, 2-3 in the corners) and so also equalise the two
+	// types. The names are
+	// the EEPROM's: on the S5KJN1, GainLeft applies to the PD lines
+	// V4L2_METADATA_LAYOUT_S5KJN1_PDAF calls R, GainRight to its L lines
+	// (measured: only that pairing flattens L/R).
+	GainLeft, GainRight []int
+	// DCCWidth x DCCHeight regions tile the image; row-major.
+	DCCWidth, DCCHeight int
+	// DCCQ is the DCC values' fixed-point fraction bits.
+	DCCQ int
+	// DCC is the lens movement, in actuator codes, per pixel of phase
+	// (pixels of the binned image, 4080 wide on the S5KJN1), scaled by
+	// 1 << DCCQ.
+	DCC []int
+}
+
 // Calibration is what a Format extracts from an EEPROM image.
 type Calibration struct {
 	// Format names the Format that parsed it.
@@ -44,6 +76,7 @@ type Calibration struct {
 	// ModuleID identifies the unit, when the layout records it.
 	ModuleID string
 	AF       *AF
+	PDAF     *PDAF
 }
 
 // Module is what the sensor module file says about its EEPROM.

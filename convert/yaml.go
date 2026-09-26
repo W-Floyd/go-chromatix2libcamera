@@ -17,6 +17,8 @@ type Tuning struct {
 	ToneCurve []Point
 	// AF, if set, adds the Af algorithm with the actuator's travel.
 	AF *AFMap
+	// PDAF, if set with AF, adds the module's PDAF calibration to Af.
+	PDAF *PDAF
 }
 
 // WriteYAML writes t as a libcamera software ISP tuning file.
@@ -65,10 +67,40 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 			fmt.Fprintf(&b, " %.3f, %d", p.Dioptres, p.Code)
 		}
 		b.WriteString(" ]\n")
+		if p := t.PDAF; p != nil {
+			b.WriteString("      pdaf:\n")
+			fmt.Fprintf(&b, "        # %s\n", p.Source)
+			b.WriteString("        # Per PD pixel type gains (1.0 = none), grid points corner to\n")
+			b.WriteString("        # corner, named as the EEPROM names them.\n")
+			fmt.Fprintf(&b, "        gainMap:\n          size: [ %d, %d ]\n", p.GainWidth, p.GainHeight)
+			writeGrid(&b, "left", p.GainLeft, p.GainWidth, "%.3f")
+			writeGrid(&b, "right", p.GainRight, p.GainWidth, "%.3f")
+			b.WriteString("        # Lens movement in actuator codes per pixel of phase, per region.\n")
+			fmt.Fprintf(&b, "        dcc:\n          size: [ %d, %d ]\n", p.DCCWidth, p.DCCHeight)
+			writeGrid(&b, "values", p.DCC, p.DCCWidth, "%.3f")
+		}
 	}
 	b.WriteString("...\n")
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// writeGrid writes a row-major grid as a flow list, one row per line.
+func writeGrid(b *strings.Builder, key string, v []float64, width int, format string) {
+	fmt.Fprintf(b, "          %s: [\n", key)
+	for i, x := range v {
+		if i%width == 0 {
+			b.WriteString("           ")
+		}
+		b.WriteString(" " + fmt.Sprintf(format, x))
+		if i < len(v)-1 {
+			b.WriteString(",")
+		}
+		if i%width == width-1 || i == len(v)-1 {
+			b.WriteString("\n")
+		}
+	}
+	b.WriteString("          ]\n")
 }
 
 func f(x float64) string {
