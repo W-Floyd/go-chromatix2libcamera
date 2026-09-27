@@ -300,6 +300,11 @@ func buildTuning(tuned, module, eeprom string, o convert.Options, macro float64)
 			t.AWBCal = awbCal
 		}
 		t.WhitePoints, t.OffLocus = locus, other
+		if a, err := convert.AWBGainAdjust(f, o, awbCal); err == nil {
+			t.GainAdjust = a
+		} else {
+			fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no AWB gain adjustment:", err)
+		}
 	} else {
 		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no AWB reference points:", err)
 	}

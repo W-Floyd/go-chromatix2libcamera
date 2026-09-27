@@ -24,6 +24,7 @@ var schemas = map[string]map[uint64]*chromatix.Type{
 var moduleSchemas = map[string]*chromatix.Type{
 	"actuatorDriver": ActuatorDriver,
 	"refPtV1":        RefPtV1,
+	"triglGAV1":      TriglGAV1,
 }
 
 func version(major, minor, incr uint64) uint64 {

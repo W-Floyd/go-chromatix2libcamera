@@ -23,6 +23,8 @@ type Tuning struct {
 	WhitePoints, OffLocus []WhitePoint
 	// AWBCal, if set, is the unit calibration the white points include.
 	AWBCal *calibration.AWB
+	// GainAdjust, if set, gives Awb its gain adjustment.
+	GainAdjust *GainAdjust
 	// ToneCurve, if set, goes to Adjust's toneCurve.
 	ToneCurve []Point
 	// AF, if set, adds the Af algorithm with the actuator's travel.
@@ -107,6 +109,45 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 				fmt.Fprintf(&b, " %d, %.4f", p.CT, p.Width)
 			}
 			b.WriteString(" ]\n")
+		}
+		if a := t.GainAdjust; a != nil && len(a.Vertices) > 0 && len(a.Triangles) > 0 {
+			b.WriteString("      # Gain adjustment (triglGAV1) at the lux index: factors on the red\n")
+			b.WriteString("      # and blue gains, interpolated over a mesh of white points and by\n")
+			b.WriteString("      # colour temperature, which keep some of warm light's warmth.\n")
+			b.WriteString("      gainAdjust:\n        vertices: [  # R/G, B/G, red, blue\n")
+			for i, v := range a.Vertices {
+				sep := ","
+				if i == len(a.Vertices)-1 {
+					sep = ""
+				}
+				fmt.Fprintf(&b, "          %.4f, %.4f, %.4f, %.4f%s\n", v.RG, v.BG, v.R, v.B, sep)
+			}
+			b.WriteString("        ]\n        triangles: [")
+			for i, tri := range a.Triangles {
+				if i > 0 {
+					b.WriteString(",")
+				}
+				if i%8 == 0 {
+					b.WriteString("\n         ")
+				}
+				fmt.Fprintf(&b, " %d, %d, %d", tri[0], tri[1], tri[2])
+			}
+			b.WriteString("\n        ]\n")
+			if len(a.CCT) > 0 {
+				for _, s := range []struct {
+					key string
+					val func(AdjustPoint) float64
+				}{{"cctRed", func(p AdjustPoint) float64 { return p.R }}, {"cctBlue", func(p AdjustPoint) float64 { return p.B }}} {
+					fmt.Fprintf(&b, "        %s: [", s.key)
+					for i, p := range a.CCT {
+						if i > 0 {
+							b.WriteString(",")
+						}
+						fmt.Fprintf(&b, " %g, %.3f", p.CT, s.val(p))
+					}
+					b.WriteString(" ]\n")
+				}
+			}
 		}
 	}
 	if len(t.CCMs) > 0 {
