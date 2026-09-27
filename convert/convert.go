@@ -158,9 +158,8 @@ func ToneCurve(f *chromatix.File, o Options) ([]Point, error) {
 	return pts, nil
 }
 
-// BlackLevel returns the front-end black level for the selected region, on
-// libcamera's 16-bit scale, averaged over the four Bayer channels.
-func BlackLevel(f *chromatix.File, o Options) (int, error) {
+// blackLevelModule decodes the front end's demuxblklevel14 module.
+func blackLevelModule(f *chromatix.File) (*chromatix.Object, error) {
 	var mod *chromatix.Symbol
 	for _, m := range f.Modules() {
 		if m.Name == "demuxblklevel14_tfe" && (mod == nil || m.Group < mod.Group) {
@@ -169,29 +168,101 @@ func BlackLevel(f *chromatix.File, o Options) (int, error) {
 		}
 	}
 	if mod == nil {
-		return 0, fmt.Errorf("no demuxblklevel14_tfe module")
+		return nil, fmt.Errorf("no demuxblklevel14_tfe module")
 	}
 	t, ok := isp.Schema(*mod)
 	if !ok {
-		return 0, fmt.Errorf("no schema for %s %s", mod.Name, mod.VersionString())
+		return nil, fmt.Errorf("no schema for %s %s", mod.Name, mod.VersionString())
 	}
 	v, err := f.Decode(*mod, t)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	cct, err := selectRegion(v.(*chromatix.Object), o)
-	if err != nil {
-		return 0, fmt.Errorf("%s: %w", mod.Name, err)
-	}
-	// The black level does not depend on colour temperature; take the
-	// first region.
+	return v.(*chromatix.Object), nil
+}
+
+// blackLevel16 is a colour temperature region's black level on libcamera's
+// 16-bit scale, averaged over the four Bayer channels. The black level
+// does not depend on colour temperature; the first region is taken.
+func blackLevel16(cct []chromatix.Value) float64 {
 	sum := 0.0
 	levels := list(cct[0].(*chromatix.Object), "black_level")
 	for _, l := range levels {
 		sum += l.(float64)
 	}
-	mean := sum / float64(len(levels))
-	return int(mean*float64(uint(1)<<(16-isp.DemuxBlkLevelBits)) + 0.5), nil
+	return sum / float64(len(levels)) * float64(uint(1)<<(16-isp.DemuxBlkLevelBits))
+}
+
+// BlackLevel returns the front-end black level for the selected region, on
+// libcamera's 16-bit scale, averaged over the four Bayer channels.
+func BlackLevel(f *chromatix.File, o Options) (int, error) {
+	root, err := blackLevelModule(f)
+	if err != nil {
+		return 0, err
+	}
+	cct, err := selectRegion(root, o)
+	if err != nil {
+		return 0, fmt.Errorf("demuxblklevel14_tfe: %w", err)
+	}
+	return int(blackLevel16(cct) + 0.5), nil
+}
+
+// GainLevel is a black level (libcamera's 16-bit scale) at a sensor gain.
+type GainLevel struct {
+	Gain, Level float64
+}
+
+// BlackLevelByGain returns the front-end black level as a function of
+// sensor gain, when the tuning selects it by gain: each gain region's
+// level at its start and end, so that the level is flat within a region
+// and linear between regions, as CamX interpolates. Nil when the tuning
+// selects it by lux index or has one gain region.
+func BlackLevelByGain(f *chromatix.File, o Options) ([]GainLevel, error) {
+	root, err := blackLevelModule(f)
+	if err != nil {
+		return nil, err
+	}
+	if str(root, "aec_exp_control") != "gain" {
+		return nil, nil
+	}
+
+	drc, err := pick(list(root, "core"), "drc_gain", o.DRCGain, "start", "end")
+	if err != nil {
+		return nil, err
+	}
+	hdr := list(drc, "drc_gain_data")[0].(*chromatix.Object)
+	var led *chromatix.Object
+	for _, e := range list(hdr, "hdr_aec_data") {
+		if l := e.(*chromatix.Object); int64Of(get(l, "led_idx_trigger")) == 0 {
+			led = l
+			break
+		}
+	}
+	if led == nil {
+		return nil, fmt.Errorf("demuxblklevel14_tfe: no region without flash")
+	}
+
+	var out []GainLevel
+	for _, e := range list(led, "led_idx_data") {
+		r := e.(*chromatix.Object)
+		t := obj(r, "aec_trigger")
+		level := blackLevel16(list(r, "aec_data"))
+		out = append(out, GainLevel{num(t, "gain_start"), level}, GainLevel{num(t, "gain_end"), level})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Gain < out[j].Gain })
+
+	/* Keep the gains strictly increasing, as a libcamera Pwl needs */
+	var pwl []GainLevel
+	for _, p := range out {
+		if len(pwl) > 0 && p.Gain <= pwl[len(pwl)-1].Gain {
+			continue
+		}
+		pwl = append(pwl, p)
+	}
+	if len(pwl) < 2 {
+		return nil, nil
+	}
+	return pwl, nil
 }
 
 // selectRegion walks a module's DRC gain -> HDR -> LED -> AEC trigger tree

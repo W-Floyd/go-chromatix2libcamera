@@ -287,6 +287,11 @@ func cmdConvert(args []string) error {
 	}
 	if bl, err := convert.BlackLevel(f, o); err == nil {
 		t.BlackLevel = bl
+		if g, err := convert.BlackLevelByGain(f, o); err == nil {
+			t.BlackLevelGain = g
+		} else {
+			fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no black level by gain:", err)
+		}
 	} else {
 		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no black level:", err)
 	}

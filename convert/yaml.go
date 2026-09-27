@@ -15,7 +15,9 @@ type Tuning struct {
 	Source []string
 	// BlackLevel is on libcamera's 16-bit scale; 0 leaves it out.
 	BlackLevel int
-	CCMs       []CCM
+	// BlackLevelGain, if set, is the black level by sensor gain.
+	BlackLevelGain []GainLevel
+	CCMs           []CCM
 	// WhitePoints, if set, give Awb its colour temperature curve; OffLocus
 	// are the reference points it has no colour temperature for.
 	WhitePoints, OffLocus []WhitePoint
@@ -50,6 +52,17 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 	b.WriteString("%YAML 1.1\n---\nversion: 1\nalgorithms:\n")
 	if t.BlackLevel > 0 {
 		fmt.Fprintf(&b, "  - BlackLevel:\n      blackLevel: %d\n", t.BlackLevel)
+		if len(t.BlackLevelGain) > 0 {
+			b.WriteString("      # By sensor gain (demuxblklevel14's gain regions): gain, level\n")
+			b.WriteString("      blackLevelGain: [")
+			for i, p := range t.BlackLevelGain {
+				if i > 0 {
+					b.WriteString(",")
+				}
+				fmt.Fprintf(&b, " %.4g, %.0f", p.Gain, p.Level)
+			}
+			b.WriteString(" ]\n")
+		}
 	}
 	b.WriteString("  - Awb:\n")
 	if len(t.WhitePoints) > 0 {
