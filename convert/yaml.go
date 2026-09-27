@@ -191,8 +191,8 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 		b.WriteString("      # tone mapping, which the soft ISP lacks: all of it applies here.\n")
 		fmt.Fprintf(&b, "      drcCurve:\n        maxRatio: %g\n        anchors:\n", d.MaxRatio)
 		for _, a := range d.Anchors {
-			fmt.Fprintf(&b, "          - drcGain: %.4g\n            tones: [ %.3f, %.3f, %.3f ]\n            darkBoost: %.3f\n",
-				a.DRCGain, a.Dark, a.Mid, a.Bright, a.DarkBoost)
+			fmt.Fprintf(&b, "          - drcGain: %.4g\n            tones: [ %.3f, %.3f, %.3f ]\n            darkBoost: %.3f\n            darkBoostRatio: %.3f\n",
+				a.DRCGain, a.Dark, a.Mid, a.Bright, a.DarkBoost, a.DarkBoostRatio)
 		}
 	}
 	if len(t.Chroma) > 0 {
@@ -230,6 +230,14 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 			fmt.Fprintf(&b, "        targetAdj: [ %.4g, %.4g ]\n", hz.MinTargetAdjRatio, hz.MaxTargetAdjRatio)
 			fmt.Fprintf(&b, "        maxDrcGain: %.4g\n", math.Min(hz.MaxDRCGain, hz.MaxADRCGain))
 			fmt.Fprintf(&b, "        filter: %.4g\n", h.Filter)
+			if h.DarkBoost && hz.MaxDarkBoostGain > 1 {
+				fmt.Fprintf(&b, "        # Dark boost: darkest G pixels' floor (darkRefLow %g of %g), lifted by\n",
+					hz.DarkRefLow, AECLumaFullScale)
+				b.WriteString("        # the tone curve by at most maxDarkBoost more than the DRC gain\n")
+				fmt.Fprintf(&b, "        darkRef: %.4f\n", hz.DarkRefLow/AECLumaFullScale)
+				fmt.Fprintf(&b, "        darkRange: [ %.4g, %.4g ]\n", hz.DarkRange[1][0], hz.DarkRange[1][1])
+				fmt.Fprintf(&b, "        maxDarkBoost: %.4g\n", hz.MaxDarkBoostGain)
+			}
 		}
 	}
 	if t.AF != nil && len(t.AF.Points) >= 2 {

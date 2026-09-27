@@ -13,7 +13,9 @@ import (
 type DRCAnchors struct {
 	DRCGain           float64
 	Dark, Mid, Bright float64
-	DarkBoost         float64
+	// DarkBoost is dark_boost_offset; DarkBoostRatio, dark_boost_ratio,
+	// weighs AEC's dark boost gain into the shadows' gain.
+	DarkBoost, DarkBoostRatio float64
 }
 
 // DRCCurve is TMC 1.2's DRC tone mapping from its anchor knee points.
@@ -84,10 +86,11 @@ func DRCToneCurve(f *chromatix.File, o Options) (*DRCCurve, error) {
 		}
 		tones := list(r, "tone_anchors")
 		a := DRCAnchors{
-			Dark:      tones[1].(float64),
-			Mid:       tones[2].(float64),
-			Bright:    tones[3].(float64),
-			DarkBoost: num(r, "dark_boost_offset"),
+			Dark:           tones[1].(float64),
+			Mid:            tones[2].(float64),
+			Bright:         tones[3].(float64),
+			DarkBoost:      num(r, "dark_boost_offset"),
+			DarkBoostRatio: num(r, "dark_boost_ratio"),
 		}
 		for _, g := range []float64{num(trig, "start"), num(trig, "end")} {
 			a.DRCGain = g
