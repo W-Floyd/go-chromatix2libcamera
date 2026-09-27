@@ -36,6 +36,38 @@ ordinary indoor light) and `-drc-gain` (default 1).
 the `softisp-af` branch of github.com/W-Floyd/libcamera ("software_isp: Apply
 the tone curve from a lookup table"). Without it, libcamera ignores the key.
 
+## Generating a device's tuning (`generate`)
+
+On the device, typically at boot once the vendor partition is mounted,
+`generate` writes the tuning file of every camera a small per-device JSON
+config describes (default `/etc/go-chromatix2libcamera.json`) to
+`/etc/libcamera/ipa/soft/<sensor>.yaml`:
+
+```json
+{
+  "vendor": "/run/msm-firmware-loader/mnt/vendor*/lib64/camera",
+  "cameras": [
+    { "sensor": "s5kjn1",
+      "tuned": "com.qti.tuned.mot_fogona_s5kjns.bin",
+      "module": "com.qti.sensormodule.mot_fogona_s5kjns_qtech.bin",
+      "eeprom": "i2c-bus@0/eeprom@50" },
+    { "sensor": "ov08f10", "tuned": "com.qti.tuned.mot_ov08f.bin" }
+  ]
+}
+```
+
+`sensor` is libcamera's name for the sensor, which the tuning file is named
+after. `vendor` is a glob; the first directory matching it that holds the
+tuned file is used. `eeprom` is the module EEPROM's device tree node, matched
+against the end of each nvmem device's `of_node` path, because the I2C bus
+numbers, and so the nvmem devices' names, change between boots. Without the
+EEPROM, or when it does not decode, the camera still gets the vendor's
+golden-module tuning, with a note on stderr.
+
+A file is written, atomically, only when its content changes, so that
+running `generate` on every boot costs nothing, and a vendor update flows
+through. `-n` reports what would change; `-output` writes elsewhere.
+
 ## Per-unit calibration (module EEPROM)
 
 Camera modules carry factory calibration in an EEPROM, and CamX uses it in
