@@ -262,6 +262,11 @@ func cmdConvert(args []string) error {
 	} else {
 		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no tone curve:", err)
 	}
+	if locus, other, err := convert.WhitePoints(f); err == nil {
+		t.WhitePoints, t.OffLocus = locus, other
+	} else {
+		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no AWB reference points:", err)
+	}
 	if l, err := convert.LensShading(f, o); err == nil {
 		t.LSC = l
 	} else {

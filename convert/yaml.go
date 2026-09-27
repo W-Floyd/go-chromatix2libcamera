@@ -14,6 +14,9 @@ type Tuning struct {
 	// BlackLevel is on libcamera's 16-bit scale; 0 leaves it out.
 	BlackLevel int
 	CCMs       []CCM
+	// WhitePoints, if set, give Awb its colour temperature curve; OffLocus
+	// are the reference points it has no colour temperature for.
+	WhitePoints, OffLocus []WhitePoint
 	// ToneCurve, if set, goes to Adjust's toneCurve.
 	ToneCurve []Point
 	// AF, if set, adds the Af algorithm with the actuator's travel.
@@ -43,6 +46,26 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 		fmt.Fprintf(&b, "  - BlackLevel:\n      blackLevel: %d\n", t.BlackLevel)
 	}
 	b.WriteString("  - Awb:\n")
+	if len(t.WhitePoints) > 0 {
+		b.WriteString("      # AWB reference points (refPtV1) on CamX's daylight locus, as\n")
+		b.WriteString("      # the gains that make each grey:")
+		for _, p := range t.WhitePoints {
+			fmt.Fprintf(&b, " %s", p.Name)
+		}
+		b.WriteString("\n")
+		if len(t.OffLocus) > 0 {
+			b.WriteString("      # Off the locus (R/G, B/G):")
+			for _, p := range t.OffLocus {
+				fmt.Fprintf(&b, " %s %.4f %.4f", p.Name, p.RG, p.BG)
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("      colourGains:\n")
+		for _, p := range t.WhitePoints {
+			r, bl := p.Gains()
+			fmt.Fprintf(&b, "        - ct: %d\n          gains: [ %.4f, %.4f ]\n", p.CT, r, bl)
+		}
+	}
 	if len(t.CCMs) > 0 {
 		b.WriteString("  - Ccm:\n      ccms:\n")
 		for _, c := range t.CCMs {

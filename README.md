@@ -22,9 +22,11 @@ go-chromatix2libcamera convert  -module com.qti.sensormodule.<module>.bin \
 ```
 
 `convert` writes the front-end black level (`demuxblklevel14`) as libcamera's
-`BlackLevel`, the colour correction matrices (`cc13`) as `Ccm`, the output
-curve (`gamma15`) as `Adjust`'s `toneCurve`, and with `-module` the lens
-actuator's travel as `Af`'s `map`. Chromatix selects most tables by exposure
+`BlackLevel`, the AWB white points (`refPtV1`) as `Awb`'s `colourGains`, the
+colour correction matrices (`cc13`) as `Ccm`, lens shading (`lsc34`/`lsc35`)
+as `Lsc`, the output curve (`gamma15`) as `Adjust`'s `toneCurve`, the AEC
+luma targets (`Metering`) as `Agc`'s `meanTarget` and `histogram`, and with
+`-module` the lens actuator's travel as `Af`'s `map`. Chromatix selects most tables by exposure
 (and DRC gain, flash, ...) as well as colour temperature, while libcamera's
 software ISP indexes by colour temperature only, so one exposure region is
 chosen: `-lux-idx` (Qualcomm lux index, higher is darker; default 250,
@@ -73,8 +75,26 @@ data exactly fails to decode.
 |---|---|---|---|
 | `gamma15` | 1.5.0 | yes | `Adjust: toneCurve` (see above) |
 | `cc13` | 1.3.0 | yes | `Ccm` |
+| `lsc34`, `lsc35` | 3.4.0, 3.5.0 | yes | `Lsc`: the lens position nearest infinity, one set per colour temperature, the greens averaged |
 | `demuxblklevel14` (TFE) | 1.4.0 | yes (layout inferred, no public XSD) | `BlackLevel` |
+| `refPtV1` (AWB) | 1.0.0 | yes | `Awb: colourGains`: the points on CamX's daylight locus, at the colour temperatures its AWB gives them (below) |
+| `Metering` (AEC) | 8.0.1 | the luma target zones only | `Agc: meanTarget`, `histogram` (brightest zone) |
 | `actuatorDriver` (sensor module) | 1.0.0 | yes (one slot more than the public XSD) | `Af: map`; the macro end's distance is `-macro-dioptres` (default 10, i.e. 10 cm), since the module gives codes, not distances |
+
+### AWB reference points
+
+`refPtV1` holds 15 white points (R/G, B/G of grey as the AWB statistics see
+it), indexed by CamX's `StatsIlluminantType`: High, D75, D65, D50, CW,
+Fluorescent, TL84, Incandescent, Horizon, Low, then unused. The tuning gives
+them no colour temperature; CamX's AWB (`com.qti.stats.awb.so`) does, in its
+illuminant and locus segment tables: points 0-1-2-3-5-7-8-9 form the daylight
+locus at 12000, 7500, 6500, 5000, 4000, 2850, 2300 and 1500 K, and CW (4100 K)
+and TL84 (3800 K) a fluorescent segment off it. `colourGains` has the locus;
+the fluorescent points go in a comment.
+
+Using `colourGains` for the colour temperature needs the soft IPA change on
+the `pdaf` branch of github.com/W-Floyd/libcamera ("ipa: soft: awb: Take the
+colour temperature from the sensor's locus"); upstream's soft IPA ignores it.
 
 ## Tests
 
