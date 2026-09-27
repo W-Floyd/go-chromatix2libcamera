@@ -93,9 +93,21 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 			fmt.Fprintf(&b, "        - ct: %d\n          gains: [ %.4f, %.4f ]\n", p.CT, r, bl)
 		}
 		pos, neg := Transverse(t.WhitePoints, t.OffLocus)
-		b.WriteString("      # How far grey world may stray off the locus: to the furthest\n")
-		fmt.Fprintf(&b, "      # off-locus point on each side, at least %g.\n", MinTransverse)
-		fmt.Fprintf(&b, "      transversePos: %.4f\n      transverseNeg: %.4f\n", pos, neg)
+		b.WriteString("      # How far grey world may stray off the locus, by colour temperature:\n")
+		fmt.Fprintf(&b, "      # to the off-locus points where they are, %g elsewhere. [ ct, width, ... ]\n", MinTransverse)
+		for _, s := range []struct {
+			key  string
+			band []BandPoint
+		}{{"transversePos", pos}, {"transverseNeg", neg}} {
+			fmt.Fprintf(&b, "      %s: [", s.key)
+			for i, p := range s.band {
+				if i > 0 {
+					b.WriteString(",")
+				}
+				fmt.Fprintf(&b, " %d, %.4f", p.CT, p.Width)
+			}
+			b.WriteString(" ]\n")
+		}
 	}
 	if len(t.CCMs) > 0 {
 		b.WriteString("  - Ccm:\n      ccms:\n")

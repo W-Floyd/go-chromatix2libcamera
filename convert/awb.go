@@ -29,26 +29,41 @@ func (p WhitePoint) Gains() (r, b float64) {
 // AwbBayes default for transversePos and transverseNeg.
 const MinTransverse = 0.01
 
-// Transverse is how far real illuminants lie off the locus, in R/G, B/G:
-// the furthest of the off-locus points away from the origin (pos, towards
-// purple) and towards it (neg, towards green), each at least
-// MinTransverse. The soft IPA keeps grey world within that band.
-func Transverse(locus, other []WhitePoint) (pos, neg float64) {
-	pos, neg = MinTransverse, MinTransverse
+// BandPoint is the transverse band's width at a colour temperature.
+type BandPoint struct {
+	CT    int
+	Width float64
+}
+
+// Transverse is how far real illuminants lie off the locus, in R/G, B/G, as
+// a function of colour temperature, away from the origin (pos, towards
+// purple) and towards it (neg, towards green): at each locus point,
+// MinTransverse, widened to the distance of each off-locus point at the
+// ends of the locus segment it lies by (the point itself if it lies by a
+// locus point). The band is then as wide as a real illuminant needs where
+// there is one, the fluorescent tubes at 3800-4100 K, and narrow
+// elsewhere, where a scene mostly of one colour would otherwise pull grey
+// world off white.
+func Transverse(locus, other []WhitePoint) (pos, neg []BandPoint) {
+	for _, p := range locus {
+		pos = append(pos, BandPoint{p.CT, MinTransverse})
+		neg = append(neg, BandPoint{p.CT, MinTransverse})
+	}
 	for _, w := range other {
 		best := math.Inf(1)
-		var side, dist float64
+		var side, dist, t float64
+		seg := 0
 		for i := 0; i+1 < len(locus); i++ {
 			p, q := locus[i], locus[i+1]
 			dx, dy := q.RG-p.RG, q.BG-p.BG
 			vx, vy := w.RG-p.RG, w.BG-p.BG
-			t := math.Max(0, math.Min(1, (vx*dx+vy*dy)/(dx*dx+dy*dy)))
-			ex, ey := vx-dx*t, vy-dy*t
+			ti := math.Max(0, math.Min(1, (vx*dx+vy*dy)/(dx*dx+dy*dy)))
+			ex, ey := vx-dx*ti, vy-dy*ti
 			d := math.Hypot(ex, ey)
 			if d >= best {
 				continue
 			}
-			best = d
+			best, seg, t = d, i, ti
 			/* The segment's normal away from the origin */
 			nx, ny := dy, -dx
 			if nx*p.RG+ny*p.BG < 0 {
@@ -56,10 +71,19 @@ func Transverse(locus, other []WhitePoint) (pos, neg float64) {
 			}
 			side, dist = ex*nx+ey*ny, d
 		}
+		band := neg
 		if side >= 0 {
-			pos = math.Max(pos, dist)
-		} else {
-			neg = math.Max(neg, dist)
+			band = pos
+		}
+		/* Widen the segment's ends, or the one locus point it is at */
+		ends := []int{seg, seg + 1}
+		if t == 0 {
+			ends = []int{seg}
+		} else if t == 1 {
+			ends = []int{seg + 1}
+		}
+		for _, k := range ends {
+			band[k].Width = math.Max(band[k].Width, dist)
 		}
 	}
 	return pos, neg
