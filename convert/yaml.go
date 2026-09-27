@@ -5,6 +5,8 @@ import (
 	"io"
 	"math"
 	"strings"
+
+	"github.com/W-Floyd/go-chromatix2libcamera/calibration"
 )
 
 // Tuning is the content of a libcamera software ISP tuning file.
@@ -17,6 +19,8 @@ type Tuning struct {
 	// WhitePoints, if set, give Awb its colour temperature curve; OffLocus
 	// are the reference points it has no colour temperature for.
 	WhitePoints, OffLocus []WhitePoint
+	// AWBCal, if set, is the unit calibration the white points include.
+	AWBCal *calibration.AWB
 	// ToneCurve, if set, goes to Adjust's toneCurve.
 	ToneCurve []Point
 	// AF, if set, adds the Af algorithm with the actuator's travel.
@@ -53,6 +57,12 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 			fmt.Fprintf(&b, " %s", p.Name)
 		}
 		b.WriteString("\n")
+		if c := t.AWBCal; c != nil {
+			rg, bg := c.Factors()
+			fmt.Fprintf(&b, "      # Scaled to this unit (EEPROM): R/G x %.4f, B/G x %.4f\n", rg, bg)
+			fmt.Fprintf(&b, "      #   (unit %.4f %.4f, golden %.4f %.4f)\n",
+				c.UnitRG, c.UnitBG, c.GoldenRG, c.GoldenBG)
+		}
 		if len(t.OffLocus) > 0 {
 			b.WriteString("      # Off the locus (R/G, B/G):")
 			for _, p := range t.OffLocus {

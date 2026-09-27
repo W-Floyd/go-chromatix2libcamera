@@ -194,6 +194,7 @@ func cmdConvert(args []string) error {
 	}
 	var af *convert.AFMap
 	var pdaf *convert.PDAF
+	var awbCal *calibration.AWB
 	var sources []string
 	if *module != "" {
 		mf, err := load(*module)
@@ -214,6 +215,7 @@ func cmdConvert(args []string) error {
 			sources = append(sources, fmt.Sprintf("%s (%s, module %s)",
 				filepath.Base(*eeprom), c.Format, c.ModuleID))
 			cal = c.AF
+			awbCal = c.AWB
 			if c.PDAF != nil {
 				pdaf = convert.PDAFFromCalibration(c.PDAF)
 				if off, ok := convert.PDAFOffsetFromModule(mf); ok {
@@ -263,6 +265,11 @@ func cmdConvert(args []string) error {
 		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no tone curve:", err)
 	}
 	if locus, other, err := convert.WhitePoints(f); err == nil {
+		if awbCal != nil {
+			convert.CalibrateWhitePoints(locus, awbCal)
+			convert.CalibrateWhitePoints(other, awbCal)
+			t.AWBCal = awbCal
+		}
 		t.WhitePoints, t.OffLocus = locus, other
 	} else {
 		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no AWB reference points:", err)

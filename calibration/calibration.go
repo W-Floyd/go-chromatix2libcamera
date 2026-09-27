@@ -1,6 +1,6 @@
 // Package calibration reads per-unit camera module calibration from the
 // module's EEPROM (OTP) image: auto focus actuator codes, PDAF gain and DCC
-// maps and, later, white balance and lens shading.
+// maps, white balance and, later, lens shading.
 //
 // EEPROM layouts are vendor-specific. Each layout is a Format; Parse tries
 // the registered formats' Detect in order and uses the first that claims
@@ -69,6 +69,20 @@ type PDAF struct {
 	DCC []int
 }
 
+// AWB is a module's white balance calibration: the white point of a grey
+// chart, as R/G, B/G and Gr/Gb, measured on this unit and on the golden
+// module the tuning was made with, under the same light.
+type AWB struct {
+	UnitRG, UnitBG, UnitGrGb       float64
+	GoldenRG, GoldenBG, GoldenGrGb float64
+}
+
+// Factors are what CamX scales the tuning's AWB reference points by for
+// this unit: unit over golden, for R/G and B/G.
+func (a *AWB) Factors() (rg, bg float64) {
+	return a.UnitRG / a.GoldenRG, a.UnitBG / a.GoldenBG
+}
+
 // Calibration is what a Format extracts from an EEPROM image.
 type Calibration struct {
 	// Format names the Format that parsed it.
@@ -77,6 +91,7 @@ type Calibration struct {
 	ModuleID string
 	AF       *AF
 	PDAF     *PDAF
+	AWB      *AWB
 }
 
 // Module is what the sensor module file says about its EEPROM.

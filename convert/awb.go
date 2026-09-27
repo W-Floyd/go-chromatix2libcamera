@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/W-Floyd/go-chromatix2libcamera/calibration"
 	"github.com/W-Floyd/go-chromatix2libcamera/chromatix"
 	"github.com/W-Floyd/go-chromatix2libcamera/isp"
 )
@@ -21,6 +22,19 @@ type WhitePoint struct {
 // blue relative to green.
 func (p WhitePoint) Gains() (r, b float64) {
 	return 1 / p.RG, 1 / p.BG
+}
+
+// CalibrateWhitePoints moves the golden module's white points to this
+// unit's, as CamX does with the EEPROM's white balance calibration: R/G and
+// B/G scaled by unit over golden. The tuning's sensorCalV1 could give
+// factors per colour temperature; the calibration here has one, at one
+// light, which applies to every point.
+func CalibrateWhitePoints(points []WhitePoint, cal *calibration.AWB) {
+	rg, bg := cal.Factors()
+	for i := range points {
+		points[i].RG *= rg
+		points[i].BG *= bg
+	}
 }
 
 // WhitePoints reads the AWB reference points (refPtV1) of a tuned Chromatix

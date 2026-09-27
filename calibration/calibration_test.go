@@ -2,6 +2,7 @@ package calibration
 
 import (
 	"errors"
+	"math"
 	"testing"
 )
 
@@ -49,7 +50,47 @@ func motImage() []byte {
 		put16(b, motDCCOff+6+2*i, 250+i)
 	}
 	putCRC(b, motDCCOff, motDCCLen, motDCCCRCOff)
+
+	// White balance: tolerances 0.05, golden 0.67/0.61/1.0, unit
+	// 0.6863/0.6024/1.0.
+	copy(b[motWBTolOff:], []byte{50, 50, 50, 50})
+	for i, r := range []float64{0.67, 0.61, 1.0} {
+		put16(b, motWBGoldenOff+2*i, int(r*motWBScale))
+	}
+	for i, r := range []float64{0.6863, 0.6024, 1.0} {
+		put16(b, motWBUnitOff+2*i, int(r*motWBScale))
+	}
+	putCRC(b, motWBOff, motWBLen, motWBCRCOff)
 	return b
+}
+
+func TestMotorolaAWB(t *testing.T) {
+	c, err := Parse(motModule, motImage())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.AWB == nil {
+		t.Fatal("no AWB")
+	}
+	rg, bg := c.AWB.Factors()
+	if math.Abs(rg-0.6863/0.67) > 1e-3 || math.Abs(bg-0.6024/0.61) > 1e-3 {
+		t.Errorf("factors %g %g", rg, bg)
+	}
+}
+
+func TestMotorolaAWBChecks(t *testing.T) {
+	b := motImage()
+	b[motWBUnitOff] ^= 1
+	if c, _ := Parse(motModule, b); c == nil || c.AWB != nil || c.PDAF == nil {
+		t.Error("bad white balance CRC: want no AWB and the rest kept")
+	}
+
+	b = motImage()
+	put16(b, motWBUnitOff, 12000) // 0.732: golden 0.67 + 0.05 is below it
+	putCRC(b, motWBOff, motWBLen, motWBCRCOff)
+	if c, _ := Parse(motModule, b); c == nil || c.AWB != nil {
+		t.Error("unit off limits: want no AWB")
+	}
 }
 
 var motModule = &Module{

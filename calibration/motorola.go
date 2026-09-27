@@ -18,6 +18,12 @@ import (
 //	0x27-0x3e  module information block, CRC-16/BUYPASS at 0x3f
 //	0x29       macro code << 6
 //	0x2d       infinity code << 6
+//	0x41-0x6b  white balance block, CRC at 0x6c: at 0x47 the R/G and
+//	           B/G tolerances (min, max; one byte each, in 1/1000), at
+//	           0x53 the golden module's R/G, B/G, Gr/Gb, at 0x61 the
+//	           unit's (16-bit each, in 1/16384), under D50: the library
+//	           hands CamX unit over golden as the WBCalibrationData of
+//	           EEPROMIlluminantType D50
 //	0x18f6     four AF calibration points: distance (mm), code << 6
 //	0x1906     their CRC-16/BUYPASS
 //	0x7e1      PDAF gain map block, 893 bytes, CRC at 0xb5e: DCC mode,
@@ -60,6 +66,15 @@ const (
 	motDCCLen     = 102
 	motDCCCRCOff  = motDCCOff + motDCCLen
 	motDCCMax     = 200
+
+	motWBOff       = 0x41
+	motWBLen       = 43
+	motWBCRCOff    = motWBOff + motWBLen
+	motWBTolOff    = 0x47
+	motWBGoldenOff = 0x53
+	motWBUnitOff   = 0x61
+	motWBScale     = 1 << 14
+	motWBTolScale  = 1000
 )
 
 func init() { Register(motorolaGT24P256C{}) }
@@ -103,7 +118,30 @@ func (motorolaGT24P256C) Parse(m *Module, image []byte) (*Calibration, error) {
 		ModuleID: strings.TrimRight(string(image[:12]), "\x00\xff "),
 		AF:       af,
 		PDAF:     motPDAF(image),
+		AWB:      motAWB(image),
 	}, nil
+}
+
+// motAWB reads the white balance block; nil if it fails its CRC or, as the
+// library rejects it, the unit is outside the golden module's tolerances.
+func motAWB(image []byte) *AWB {
+	if !crcOK(image, motWBOff, motWBLen, motWBCRCOff) {
+		return nil
+	}
+	ratio := func(off int) float64 { return float64(be16(image, off)) / motWBScale }
+	tol := func(i int) float64 { return float64(image[motWBTolOff+i]) / motWBTolScale }
+	a := &AWB{
+		GoldenRG: ratio(motWBGoldenOff), GoldenBG: ratio(motWBGoldenOff + 2),
+		GoldenGrGb: ratio(motWBGoldenOff + 4),
+		UnitRG:     ratio(motWBUnitOff), UnitBG: ratio(motWBUnitOff + 2),
+		UnitGrGb: ratio(motWBUnitOff + 4),
+	}
+	if a.GoldenRG == 0 || a.GoldenBG == 0 ||
+		a.UnitRG < a.GoldenRG-tol(0) || a.UnitRG > a.GoldenRG+tol(1) ||
+		a.UnitBG < a.GoldenBG-tol(2) || a.UnitBG > a.GoldenBG+tol(3) {
+		return nil
+	}
+	return a
 }
 
 // motPDAF reads the PDAF blocks; nil if either fails its CRC or holds
