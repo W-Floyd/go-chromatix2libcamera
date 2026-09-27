@@ -265,6 +265,11 @@ func cmdConvert(args []string) error {
 	} else {
 		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no tone curve:", err)
 	}
+	if c, err := convert.Chroma(f, o); err == nil {
+		t.Chroma = c
+	} else {
+		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no chroma enhancement:", err)
+	}
 	if locus, other, err := convert.WhitePoints(f); err == nil {
 		if awbCal != nil {
 			convert.CalibrateWhitePoints(locus, awbCal)

@@ -35,6 +35,8 @@ type Tuning struct {
 	Hist *HistTarget
 	// LSC, if set, adds the Lsc algorithm's lens shading gains.
 	LSC *LSC
+	// Chroma, if set, gives Adjust its chroma scales.
+	Chroma []ChromaSet
 }
 
 // WriteYAML writes t as a libcamera software ISP tuning file.
@@ -114,6 +116,17 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 			fmt.Fprintf(&b, "        %.6f, %.6f%s\n", p.X, p.Y, sep)
 		}
 		b.WriteString("      ]\n")
+	}
+	if len(t.Chroma) > 0 {
+		b.WriteString("      # Chroma enhancement (cv12) after the tone curve, on BT.601\n")
+		b.WriteString("      # chroma by sign: Cb+ (blue), Cb- (yellow), Cr+ (red), Cr- (green)\n")
+		b.WriteString("      chroma:\n")
+		for _, c := range t.Chroma {
+			fmt.Fprintf(&b, "        - ct: %d\n          scale: [ %.3f, %.3f, %.3f, %.3f ]\n",
+				c.CT, c.Scale[0], c.Scale[1], c.Scale[2], c.Scale[3])
+			fmt.Fprintf(&b, "          shear: [ %.4f, %.4f, %.4f, %.4f ]\n",
+				c.Shear[0], c.Shear[1], c.Shear[2], c.Shear[3])
+		}
 	}
 	b.WriteString("  - Agc:\n")
 	if len(t.LumaZones) > 0 {
