@@ -265,6 +265,11 @@ func cmdConvert(args []string) error {
 	} else {
 		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no tone curve:", err)
 	}
+	if d, err := convert.DRCToneCurve(f, o); err == nil {
+		t.DRC = d
+	} else {
+		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no DRC tone mapping:", err)
+	}
 	if c, err := convert.Chroma(f, o); err == nil {
 		t.Chroma = c
 	} else {

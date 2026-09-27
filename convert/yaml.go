@@ -39,6 +39,8 @@ type Tuning struct {
 	LSC *LSC
 	// Chroma, if set, gives Adjust its chroma scales.
 	Chroma []ChromaSet
+	// DRC, if set, gives Adjust its DRC tone mapping.
+	DRC *DRCCurve
 }
 
 // WriteYAML writes t as a libcamera software ISP tuning file.
@@ -129,6 +131,16 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 			fmt.Fprintf(&b, "        %.6f, %.6f%s\n", p.X, p.Y, sep)
 		}
 		b.WriteString("      ]\n")
+	}
+	if d := t.DRC; d != nil {
+		b.WriteString("      # DRC tone mapping (tmc12_sw's anchor knee points), by DRC gain.\n")
+		fmt.Fprintf(&b, "      # CamX applies %.0f%% of it (in log) globally and the rest by local\n", 100*d.GTMShare)
+		b.WriteString("      # tone mapping, which the soft ISP lacks: all of it applies here.\n")
+		fmt.Fprintf(&b, "      drcCurve:\n        maxRatio: %g\n        anchors:\n", d.MaxRatio)
+		for _, a := range d.Anchors {
+			fmt.Fprintf(&b, "          - drcGain: %.4g\n            tones: [ %.3f, %.3f, %.3f ]\n            darkBoost: %.3f\n",
+				a.DRCGain, a.Dark, a.Mid, a.Bright, a.DarkBoost)
+		}
 	}
 	if len(t.Chroma) > 0 {
 		b.WriteString("      # Chroma enhancement (cv12) after the tone curve, on BT.601\n")
