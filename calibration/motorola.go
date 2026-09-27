@@ -24,6 +24,10 @@ import (
 //	           unit's (16-bit each, in 1/16384), under D50: the library
 //	           hands CamX unit over golden as the WBCalibrationData of
 //	           EEPROMIlluminantType D50
+//	0xf7       lens shading block, CRC at 0x7df: a flat field's level at
+//	           each of 17x13 points, for R, Gr, Gb, B (16-bit each), under
+//	           D50; stored rotated 180 degrees ("MIRROR ON, FLIP ON"),
+//	           so the library reverses each table
 //	0x18f6     four AF calibration points: distance (mm), code << 6
 //	0x1906     their CRC-16/BUYPASS
 //	0x7e1      PDAF gain map block, 893 bytes, CRC at 0xb5e: DCC mode,
@@ -75,6 +79,11 @@ const (
 	motWBUnitOff   = 0x61
 	motWBScale     = 1 << 14
 	motWBTolScale  = 1000
+
+	motLSCOff    = 0xf7
+	motLSCPoints = 17 * 13
+	motLSCLen    = 4 * 2 * motLSCPoints
+	motLSCCRCOff = motLSCOff + motLSCLen
 )
 
 func init() { Register(motorolaGT24P256C{}) }
@@ -119,7 +128,24 @@ func (motorolaGT24P256C) Parse(m *Module, image []byte) (*Calibration, error) {
 		AF:       af,
 		PDAF:     motPDAF(image),
 		AWB:      motAWB(image),
+		LSC:      motLSC(image),
 	}, nil
+}
+
+// motLSC reads the lens shading block, turned the library's way round; nil
+// if it fails its CRC.
+func motLSC(image []byte) *LSC {
+	if !crcOK(image, motLSCOff, motLSCLen, motLSCCRCOff) {
+		return nil
+	}
+	table := func(ch int) []float64 {
+		t := make([]float64, motLSCPoints)
+		for i := range t {
+			t[motLSCPoints-1-i] = float64(be16(image, motLSCOff+2*(ch*motLSCPoints+i)))
+		}
+		return t
+	}
+	return &LSC{R: table(0), Gr: table(1), Gb: table(2), B: table(3)}
 }
 
 // motAWB reads the white balance block; nil if it fails its CRC or, as the

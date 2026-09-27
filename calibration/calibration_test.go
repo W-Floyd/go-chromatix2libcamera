@@ -61,7 +61,37 @@ func motImage() []byte {
 		put16(b, motWBUnitOff+2*i, int(r*motWBScale))
 	}
 	putCRC(b, motWBOff, motWBLen, motWBCRCOff)
+
+	// Lens shading: channel c's point i reads 100*c + i.
+	for c := 0; c < 4; c++ {
+		for i := 0; i < motLSCPoints; i++ {
+			put16(b, motLSCOff+2*(c*motLSCPoints+i), 100*c+i)
+		}
+	}
+	putCRC(b, motLSCOff, motLSCLen, motLSCCRCOff)
 	return b
+}
+
+func TestMotorolaLSC(t *testing.T) {
+	c, err := Parse(motModule, motImage())
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := c.LSC
+	if l == nil {
+		t.Fatal("no LSC")
+	}
+	const last = motLSCPoints - 1
+	// Stored rotated: the library's point 0 is the last one stored.
+	if l.R[0] != last || l.R[last] != 0 || l.Gr[0] != 100+last || l.Gb[0] != 200+last || l.B[last] != 300 {
+		t.Errorf("R %g..%g Gr %g Gb %g B %g", l.R[0], l.R[last], l.Gr[0], l.Gb[0], l.B[last])
+	}
+
+	b := motImage()
+	b[motLSCOff] ^= 1
+	if c, _ := Parse(motModule, b); c == nil || c.LSC != nil || c.AWB == nil {
+		t.Error("bad lens shading CRC: want no LSC and the rest kept")
+	}
 }
 
 func TestMotorolaAWB(t *testing.T) {

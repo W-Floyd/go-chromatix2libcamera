@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/W-Floyd/go-chromatix2libcamera/calibration"
 	"github.com/W-Floyd/go-chromatix2libcamera/chromatix"
 	"github.com/W-Floyd/go-chromatix2libcamera/isp"
 )
@@ -13,6 +14,8 @@ import (
 type LSC struct {
 	Width, Height int
 	Sets          []LSCSet
+	// Calibrated is whether the gains include the unit's calibration.
+	Calibrated bool
 }
 
 // LSCSet is the gains under one illuminant, per channel, row major.
@@ -27,8 +30,11 @@ type LSCSet struct {
 var lscModules = []string{"lsc35", "lsc34"}
 
 // LensShading extracts the lens shading gains of the selected region (the
-// lens position nearest infinity, then the same regions as the CCMs).
-func LensShading(f *chromatix.File, o Options) (*LSC, error) {
+// lens position nearest infinity, then the same regions as the CCMs). With
+// a unit's calibration, each gain is scaled by the golden module's level
+// over the unit's at its point, per channel, before the greens are
+// averaged, as CamX's LSC34Interpolation does with one calibration table.
+func LensShading(f *chromatix.File, o Options, cal *calibration.LSC) (*LSC, error) {
 	var m chromatix.Symbol
 	var err error
 	for _, base := range lscModules {
@@ -71,16 +77,47 @@ func LensShading(f *chromatix.File, o Options) (*LSC, error) {
 		return out
 	}
 
-	out := &LSC{Width: isp.LSCWidth, Height: isp.LSCHeight}
+	/* Per channel golden over unit, or nil for none */
+	var fr, fgr, fgb, fb []float64
+	if cal != nil {
+		golden := list(root, "golden")
+		if len(golden) == 0 {
+			return nil, fmt.Errorf("%s: no golden module tables to calibrate against", m.Name)
+		}
+		g := golden[0].(*chromatix.Object)
+		ratio := func(name string, unit []float64) []float64 {
+			gt := floats(g, name)
+			out := make([]float64, len(gt))
+			for i := range gt {
+				out[i] = 1
+				if i < len(unit) && unit[i] != 0 {
+					out[i] = gt[i] / unit[i]
+				}
+			}
+			return out
+		}
+		fr, fgr = ratio("r_gain", cal.R), ratio("gr_gain", cal.Gr)
+		fgb, fb = ratio("gb_gain", cal.Gb), ratio("b_gain", cal.B)
+	}
+	scale := func(v, factor []float64) []float64 {
+		for i := range v {
+			if i < len(factor) {
+				v[i] *= factor[i]
+			}
+		}
+		return v
+	}
+
+	out := &LSC{Width: isp.LSCWidth, Height: isp.LSCHeight, Calibrated: cal != nil}
 	for _, e := range cct {
 		r := e.(*chromatix.Object)
 		trig := obj(r, "cct_trigger")
 		s := LSCSet{
 			CT: representativeCT(num(trig, "start"), num(trig, "end")),
-			R:  floats(r, "r_gain"),
-			B:  floats(r, "b_gain"),
+			R:  scale(floats(r, "r_gain"), fr),
+			B:  scale(floats(r, "b_gain"), fb),
 		}
-		gr, gb := floats(r, "gr_gain"), floats(r, "gb_gain")
+		gr, gb := scale(floats(r, "gr_gain"), fgr), scale(floats(r, "gb_gain"), fgb)
 		for i := range gr {
 			s.G = append(s.G, (gr[i]+gb[i])/2)
 		}

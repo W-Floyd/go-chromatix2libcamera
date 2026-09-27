@@ -88,6 +88,9 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 	}
 	if l := t.LSC; l != nil && len(l.Sets) > 0 {
 		b.WriteString("  - Lsc:\n")
+		if l.Calibrated {
+			b.WriteString("      # Scaled to this unit (EEPROM): golden module level over the unit's\n")
+		}
 		fmt.Fprintf(&b, "      grid: [ %d, %d ]\n      sets:\n", l.Width, l.Height)
 		for _, s := range l.Sets {
 			fmt.Fprintf(&b, "        - ct: %d\n", s.CT)

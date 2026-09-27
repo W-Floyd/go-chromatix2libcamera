@@ -1,6 +1,6 @@
 // Package calibration reads per-unit camera module calibration from the
 // module's EEPROM (OTP) image: auto focus actuator codes, PDAF gain and DCC
-// maps, white balance and, later, lens shading.
+// maps, white balance and lens shading.
 //
 // EEPROM layouts are vendor-specific. Each layout is a Format; Parse tries
 // the registered formats' Detect in order and uses the first that claims
@@ -83,6 +83,14 @@ func (a *AWB) Factors() (rg, bg float64) {
 	return a.UnitRG / a.GoldenRG, a.UnitBG / a.GoldenBG
 }
 
+// LSC is a module's lens shading calibration: a flat field's level at each
+// point of the tuning's lens shading grid, per Bayer channel, measured on
+// this unit, in the tuning's orientation. CamX corrects the tuned gains by
+// the tuning's golden module levels over these.
+type LSC struct {
+	R, Gr, Gb, B []float64
+}
+
 // Calibration is what a Format extracts from an EEPROM image.
 type Calibration struct {
 	// Format names the Format that parsed it.
@@ -92,6 +100,7 @@ type Calibration struct {
 	AF       *AF
 	PDAF     *PDAF
 	AWB      *AWB
+	LSC      *LSC
 }
 
 // Module is what the sensor module file says about its EEPROM.

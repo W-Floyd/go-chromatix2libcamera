@@ -53,7 +53,7 @@ the fallback.
 
 | format | detected by | provides |
 |---|---|---|
-| `motorola-gt24p256c` | EEPROM name `mot_gt24p256c_s5kjns_eeprom`, size, CRC-16/BUYPASS of the module information block | AF infinity and macro codes; four AF calibration points (distance, code), CRC-checked |
+| `motorola-gt24p256c` | EEPROM name `mot_gt24p256c_s5kjns_eeprom`, size, CRC-16/BUYPASS of the module information block | AF infinity and macro codes; four AF calibration points (distance, code); PDAF gain maps and DCC; white balance (unit and golden R/G, B/G under D50, which scale `Awb`'s white points); lens shading (a 17×13 flat field per channel under D50: `Lsc`'s gains are scaled by the tuning's golden module levels over it, as CamX does). Each block is CRC-checked, and a bad block drops only that block's data |
 | `camx-generic` | `EEPROMDriverData` marks AF data available | AF infinity and macro codes at the memory map's offsets |
 
 ## The format

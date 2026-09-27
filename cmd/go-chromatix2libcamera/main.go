@@ -195,6 +195,7 @@ func cmdConvert(args []string) error {
 	var af *convert.AFMap
 	var pdaf *convert.PDAF
 	var awbCal *calibration.AWB
+	var lscCal *calibration.LSC
 	var sources []string
 	if *module != "" {
 		mf, err := load(*module)
@@ -215,7 +216,7 @@ func cmdConvert(args []string) error {
 			sources = append(sources, fmt.Sprintf("%s (%s, module %s)",
 				filepath.Base(*eeprom), c.Format, c.ModuleID))
 			cal = c.AF
-			awbCal = c.AWB
+			awbCal, lscCal = c.AWB, c.LSC
 			if c.PDAF != nil {
 				pdaf = convert.PDAFFromCalibration(c.PDAF)
 				if off, ok := convert.PDAFOffsetFromModule(mf); ok {
@@ -274,7 +275,7 @@ func cmdConvert(args []string) error {
 	} else {
 		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no AWB reference points:", err)
 	}
-	if l, err := convert.LensShading(f, o); err == nil {
+	if l, err := convert.LensShading(f, o, lscCal); err == nil {
 		t.LSC = l
 	} else {
 		fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no lens shading:", err)
