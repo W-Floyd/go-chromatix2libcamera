@@ -23,6 +23,8 @@ type Options struct {
 	DRCGain float64
 	// NoLux leaves out the lux index model, and the lux regions with it.
 	NoLux bool
+	// NoDenoise leaves out the noise reduction's tuning.
+	NoDenoise bool
 	// LuxRefProduct is the exposure time (us) times analogue gain at which
 	// a scene of lux index 250 meets the AEC luma target, and LuxPerStop
 	// the lux index steps of a stop of scene brightness: the soft ISP's

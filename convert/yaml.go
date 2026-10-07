@@ -20,6 +20,8 @@ type Tuning struct {
 	CCMs           []CCM
 	// CCMByLux, if set, is the matrices of every lux index region.
 	CCMByLux []LuxCCMs
+	// Denoise, if set, adds the Denoise algorithm.
+	Denoise []DenoiseRegion
 	// ToneCurveByLux and ChromaByLux, if set, are the output curve and
 	// the chroma enhancement of every lux index region.
 	ToneCurveByLux []LuxToneCurve
@@ -192,6 +194,20 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 				fmt.Fprintf(&b, "        - lux: [ %g, %g ]\n          sets:\n", r.Start, r.End)
 				writeLSCSets(&b, "            ", r.Sets, l.Width)
 			}
+		}
+	}
+	if len(t.Denoise) > 0 {
+		b.WriteString("  - Denoise:\n")
+		b.WriteString("      # The adaptive Bayer filter (bpcabf41) by gain: the noise model (variance of the\n")
+		b.WriteString("      # 12-bit signal = noise x level / 64, from the sensor's noise table) and the\n")
+		b.WriteString("      # filter strengths (smaller is stronger) for R/B and Gr/Gb at and below, and at\n")
+		b.WriteString("      # and above, the anchors' levels (taken to be 10-bit counts above black).\n")
+		b.WriteString("      regions:\n")
+		for _, d := range t.Denoise {
+			fmt.Fprintf(&b, "        - gain: [ %.4g, %.4g ]\n          noise: %.5g\n", d.GainStart, d.GainEnd, d.NoiseK)
+			fmt.Fprintf(&b, "          strengthLo: [ %.3g, %.3g ]\n          strengthHi: [ %.3g, %.3g ]\n",
+				d.StrengthLo[0], d.StrengthLo[1], d.StrengthHi[0], d.StrengthHi[1])
+			fmt.Fprintf(&b, "          anchors: [ %.4g, %.4g ]\n", d.AnchorLo, d.AnchorHi)
 		}
 	}
 	b.WriteString("  - Adjust:\n")

@@ -189,6 +189,7 @@ func cmdConvert(args []string) error {
 	o := convert.DefaultOptions
 	fs.Float64Var(&o.LuxIdx, "lux-idx", o.LuxIdx, "Qualcomm lux index to take the exposure region from (higher is darker)")
 	fs.Float64Var(&o.DRCGain, "drc-gain", o.DRCGain, "DRC gain to take the DRC region from (1 is none)")
+	fs.BoolVar(&o.NoDenoise, "no-denoise", o.NoDenoise, "leave out the noise reduction's tuning")
 	fs.BoolVar(&o.NoLux, "no-lux", o.NoLux, "leave out the lux index model and the tables by lux index")
 	fs.Float64Var(&o.LuxRefProduct, "lux-ref-product", o.LuxRefProduct, "exposure time (us) x analogue gain of lux index 250 at the luma target, instead of the tuning's exposure table's")
 	fs.Float64Var(&o.LuxPerStop, "lux-per-stop", o.LuxPerStop, "lux index steps per stop of scene brightness, instead of the tuning's exposure table's")
@@ -286,6 +287,13 @@ func buildTuning(tuned, module, eeprom string, o convert.Options, macro float64)
 		PDAF: pdaf,
 	}
 	t.Source = append(t.Source, sources...)
+	if !o.NoDenoise {
+		if d, err := convert.Denoise(f, o); err == nil {
+			t.Denoise = d
+		} else {
+			fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no noise reduction:", err)
+		}
+	}
 	if !o.NoLux {
 		lux, err := luxModel(f, o)
 		if err != nil {

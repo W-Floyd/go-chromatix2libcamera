@@ -13,8 +13,10 @@ var schemas = map[string]map[uint64]*chromatix.Type{
 	"cc13":    {version(1, 3, 0): CC13},
 	"cv12":    {version(1, 2, 0): CV12},
 	"tmc12":   {version(1, 2, 0): TMC12},
-	"lsc34":   {version(3, 4, 0): LSC34},
-	"lsc35":   {version(3, 5, 0): LSC34},
+	// No public XSD; see BPCABF41.
+	"bpcabf41": {version(4, 1, 0): BPCABF41},
+	"lsc34":    {version(3, 4, 0): LSC34},
+	"lsc35":    {version(3, 5, 0): LSC34},
 	// No public XSD; see DemuxBlkLevel14.
 	"demuxblklevel14": {version(1, 4, 0): DemuxBlkLevel14},
 }
