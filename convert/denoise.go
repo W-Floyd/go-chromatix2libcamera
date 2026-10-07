@@ -12,11 +12,12 @@ import (
 // gain region.
 type DenoiseRegion struct {
 	GainStart, GainEnd float64
-	// NoiseK is the slope of the noise model: the variance of the
-	// 12-bit signal is NoiseK times its level over 64 (the noise table's
-	// bin), so on the 10-bit scale it is NoiseK / 256 times the level in
-	// counts above black.
-	NoiseK float64
+	// NoiseK and NoiseQuad are the noise model: the variance of the
+	// 12-bit signal is NoiseK * bin + NoiseQuad * bin^2, where the bin is
+	// its level over 64 (the noise table's), so on the 10-bit scale it is
+	// NoiseK / 256 times the level in counts above black plus
+	// NoiseQuad / 4096 times its square.
+	NoiseK, NoiseQuad float64
 	// StrengthLo and StrengthHi are the filter strengths at and below the
 	// anchors' levels, and at and above them, for the R/B and the Gr/Gb
 	// channels: the smaller, the stronger the filter.
@@ -25,22 +26,62 @@ type DenoiseRegion struct {
 	AnchorLo, AnchorHi float64
 }
 
-// kTolerance is how far the noise table may stray from a shot noise model
-// std^2 = k * bin, over the bins before it saturates.
-const kTolerance = 0.02
+// noiseBins is how many bins of the noise table are fitted: all of them
+// before the table saturates (bin 48 on both sensors), with some margin.
+const noiseBins = 40
 
-// noiseK fits k to the table's bins that are not saturated: std[i]^2 = k * i.
-func noiseK(table []float64) (float64, error) {
-	if len(table) < 17 {
-		return 0, fmt.Errorf("noise table of %d entries", len(table))
+// kTolerance is how far the noise table may stray from its fit, in variance:
+// the front camera's highest gains grow more slowly than a parabola, up to
+// 12% off it at the first bins. It sets a filter's width, which is not that
+// precise (a 12% variance is a 6% deviation).
+const kTolerance = 0.15
+
+// noiseFit fits the table's variance, std[i]^2, to k * i + c * i^2 over its
+// first bins: shot noise is k * i, and c bends the curve where the sensor's
+// noise grows faster than the signal does (the front camera's highest gains).
+// The fit is weighted for a relative error, as the filter's kernel is.
+func noiseFit(table []float64) (k, c float64, err error) {
+	if len(table) < noiseBins+1 {
+		return 0, 0, fmt.Errorf("noise table of %d entries", len(table))
 	}
-	k := table[1] * table[1]
-	for i := 1; i <= 16; i++ {
-		if got := table[i] * table[i] / float64(i); math.Abs(got-k) > kTolerance*k {
-			return 0, fmt.Errorf("noise table is not a shot noise model: bin %d has %g, not %g", i, got, k)
+
+	/* Normal equations of min sum ((v - k i - c i^2) / v)^2 */
+	var saa, sab, sbb, sav, sbv float64
+	for i := 1; i <= noiseBins; i++ {
+		v := table[i] * table[i]
+		if v <= 0 {
+			return 0, 0, fmt.Errorf("noise table is zero at bin %d", i)
+		}
+		a, b := float64(i)/v, float64(i*i)/v
+		saa += a * a
+		sab += a * b
+		sbb += b * b
+		sav += a
+		sbv += b
+	}
+	det := saa*sbb - sab*sab
+	if det == 0 {
+		return 0, 0, fmt.Errorf("noise table cannot be fitted")
+	}
+	k = (sav*sbb - sbv*sab) / det
+	c = (saa*sbv - sab*sav) / det
+
+	for i := 1; i <= noiseBins; i++ {
+		v := table[i] * table[i]
+		fit := k*float64(i) + c*float64(i*i)
+		if math.Abs(fit-v) > kTolerance*v {
+			return 0, 0, fmt.Errorf("noise table is not shot noise: bin %d has variance %g, the fit %g", i, v, fit)
 		}
 	}
-	return k, nil
+	if k <= 0 {
+		return 0, 0, fmt.Errorf("noise table has no shot noise")
+	}
+
+	/* A bend that is under 2% of the variance at the end of the fit is noise */
+	if math.Abs(c)*noiseBins < 0.02*k {
+		c = 0
+	}
+	return k, c, nil
 }
 
 // Denoise reads the adaptive Bayer filter's regions by gain, at the DRC
@@ -83,7 +124,7 @@ func Denoise(f *chromatix.File, o Options) ([]DenoiseRegion, error) {
 	for _, e := range list(hdr, "hdr_aec_data") {
 		r := e.(*chromatix.Object)
 		table := floats(r, "noise_std_lut_level")
-		k, err := noiseK(table)
+		k, c, err := noiseFit(table)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", m.Name, err)
 		}
@@ -92,6 +133,7 @@ func Denoise(f *chromatix.File, o Options) ([]DenoiseRegion, error) {
 			GainStart: num(trig, "gain_start"),
 			GainEnd:   num(trig, "gain_end"),
 			NoiseK:    k,
+			NoiseQuad: c,
 			AnchorLo:  num(r, "filter_strength_anchor_pt_lo"),
 			AnchorHi:  num(r, "filter_strength_anchor_pt_hi"),
 		}

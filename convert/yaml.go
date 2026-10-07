@@ -199,12 +199,16 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 	if len(t.Denoise) > 0 {
 		b.WriteString("  - Denoise:\n")
 		b.WriteString("      # The adaptive Bayer filter (bpcabf41) by gain: the noise model (variance of the\n")
-		b.WriteString("      # 12-bit signal = noise x level / 64, from the sensor's noise table) and the\n")
+		b.WriteString("      # 12-bit signal = noise x bin + noiseQuad x bin^2, the bin being the level / 64,\n")
+		b.WriteString("      # fitted to the sensor's noise table) and the\n")
 		b.WriteString("      # filter strengths (smaller is stronger) for R/B and Gr/Gb at and below, and at\n")
 		b.WriteString("      # and above, the anchors' levels (taken to be 10-bit counts above black).\n")
 		b.WriteString("      regions:\n")
 		for _, d := range t.Denoise {
 			fmt.Fprintf(&b, "        - gain: [ %.4g, %.4g ]\n          noise: %.5g\n", d.GainStart, d.GainEnd, d.NoiseK)
+			if math.Abs(d.NoiseQuad) > 1e-9 {
+				fmt.Fprintf(&b, "          noiseQuad: %.5g\n", d.NoiseQuad)
+			}
 			fmt.Fprintf(&b, "          strengthLo: [ %.3g, %.3g ]\n          strengthHi: [ %.3g, %.3g ]\n",
 				d.StrengthLo[0], d.StrengthLo[1], d.StrengthHi[0], d.StrengthHi[1])
 			fmt.Fprintf(&b, "          anchors: [ %.4g, %.4g ]\n", d.AnchorLo, d.AnchorHi)
