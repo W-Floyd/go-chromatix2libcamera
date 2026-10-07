@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -57,6 +59,7 @@ func cmdGenerate(args []string) error {
 	config := fs.String("config", defaultConfig, "the device's camera config")
 	output := fs.String("output", "", "directory to write the tuning files to (default: the config's, or "+defaultOutput+")")
 	dryRun := fs.Bool("n", false, "report what would change, write nothing")
+	force := fs.Bool("f", false, "convert again even when the inputs look as they did (a swapped camera module)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -82,7 +85,7 @@ func cmdGenerate(args []string) error {
 
 	var failed []string
 	for _, cam := range c.Cameras {
-		if err := generateCamera(c.Vendor, cam, out, *dryRun); err != nil {
+		if err := generateCamera(c.Vendor, cam, out, *dryRun, *force); err != nil {
 			fmt.Fprintf(os.Stderr, "go-chromatix2libcamera: %s: %v\n", cam.Sensor, err)
 			failed = append(failed, cam.Sensor)
 		}
@@ -93,7 +96,7 @@ func cmdGenerate(args []string) error {
 	return nil
 }
 
-func generateCamera(vendor string, cam CameraConfig, out string, dryRun bool) error {
+func generateCamera(vendor string, cam CameraConfig, out string, dryRun, force bool) error {
 	if cam.Sensor == "" || cam.Tuned == "" {
 		return fmt.Errorf("a camera needs a sensor and a tuned file")
 	}
@@ -104,6 +107,21 @@ func generateCamera(vendor string, cam CameraConfig, out string, dryRun bool) er
 	module := ""
 	if cam.Module != "" {
 		module = filepath.Join(dir, cam.Module)
+	}
+
+	// The module's EEPROM is the slow part of a run (2.5 s over I2C on
+	// fogona), and the same unit gives the same bytes: when nothing else
+	// that goes into the file has changed, the file stands.
+	path := filepath.Join(out, cam.Sensor+".yaml")
+	stampPath := filepath.Join(out, "."+cam.Sensor+".stamp")
+	stamp := inputStamp(cam, filepath.Join(dir, cam.Tuned), module)
+	if !force {
+		if old, err := os.ReadFile(stampPath); err == nil && string(old) == stamp {
+			if _, err := os.Stat(path); err == nil {
+				fmt.Printf("%s: up to date\n", path)
+				return nil
+			}
+		}
 	}
 
 	/*
@@ -134,9 +152,11 @@ func generateCamera(vendor string, cam CameraConfig, out string, dryRun bool) er
 	if err := t.WriteYAML(&b); err != nil {
 		return err
 	}
-	path := filepath.Join(out, cam.Sensor+".yaml")
 	if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, b.Bytes()) {
 		fmt.Printf("%s: unchanged\n", path)
+		if !dryRun {
+			writeAtomic(stampPath, []byte(stamp))
+		}
 		return nil
 	}
 	if dryRun {
@@ -146,8 +166,29 @@ func generateCamera(vendor string, cam CameraConfig, out string, dryRun bool) er
 	if err := writeAtomic(path, b.Bytes()); err != nil {
 		return err
 	}
+	// After the file, so a stamp never vouches for one that was not written.
+	writeAtomic(stampPath, []byte(stamp))
 	fmt.Printf("%s: written\n", path)
 	return nil
+}
+
+// inputStamp names what a camera's file is made from, without reading it:
+// the camera's config, the Chromatix files' sizes and times, and this
+// program (a new build may convert differently). The EEPROM is left out on
+// purpose, as reading it is what the stamp saves; a module swapped for
+// another is picked up with -f.
+func inputStamp(cam CameraConfig, files ...string) string {
+	h := sha256.New()
+	fmt.Fprintf(h, "%+v\n", cam)
+	if exe, err := os.Executable(); err == nil {
+		files = append(files, exe)
+	}
+	for _, f := range files {
+		if st, err := os.Stat(f); err == nil {
+			fmt.Fprintf(h, "%s %d %d\n", f, st.Size(), st.ModTime().UnixNano())
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // findVendorDir returns the first directory matching the glob that holds

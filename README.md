@@ -68,6 +68,13 @@ A file is written, atomically, only when its content changes, so that
 running `generate` on every boot costs nothing, and a vendor update flows
 through. `-n` reports what would change; `-output` writes elsewhere.
 
+Reading the EEPROM is slow (2.5 s over I2C on fogona), so each file has a
+stamp beside it (`.<sensor>.stamp`): a hash of the camera's config, the
+Chromatix files' sizes and times, and the program itself. When the stamp
+matches and the file exists, the run stops there without touching the EEPROM
+(`up to date`). The EEPROM is not in the stamp: a module swapped for another
+needs `-f`.
+
 ## Per-unit calibration (module EEPROM)
 
 Camera modules carry factory calibration in an EEPROM, and CamX uses it in
