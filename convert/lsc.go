@@ -14,8 +14,17 @@ import (
 type LSC struct {
 	Width, Height int
 	Sets          []LSCSet
+	// ByLux are the sets of every lux index region, if the module is
+	// selected by lux index.
+	ByLux []LSCLux
 	// Calibrated is whether the gains include the unit's calibration.
 	Calibrated bool
+}
+
+// LSCLux is the lens shading of one lux index region.
+type LSCLux struct {
+	Start, End float64
+	Sets       []LSCSet
 }
 
 // LSCSet is the gains under one illuminant, per channel, row major.
@@ -108,31 +117,44 @@ func LensShading(f *chromatix.File, o Options, cal *calibration.LSC) (*LSC, erro
 		return v
 	}
 
-	out := &LSC{Width: isp.LSCWidth, Height: isp.LSCHeight, Calibrated: cal != nil}
-	for _, e := range cct {
-		r := e.(*chromatix.Object)
-		trig := obj(r, "cct_trigger")
-		s := LSCSet{
-			CT: representativeCT(num(trig, "start"), num(trig, "end")),
-			R:  scale(floats(r, "r_gain"), fr),
-			B:  scale(floats(r, "b_gain"), fb),
+	setsOf := func(cct []chromatix.Value) []LSCSet {
+		var all []LSCSet
+		for _, e := range cct {
+			r := e.(*chromatix.Object)
+			trig := obj(r, "cct_trigger")
+			s := LSCSet{
+				CT: representativeCT(num(trig, "start"), num(trig, "end")),
+				R:  scale(floats(r, "r_gain"), fr),
+				B:  scale(floats(r, "b_gain"), fb),
+			}
+			gr, gb := scale(floats(r, "gr_gain"), fgr), scale(floats(r, "gb_gain"), fgb)
+			for i := range gr {
+				s.G = append(s.G, (gr[i]+gb[i])/2)
+			}
+			all = append(all, s)
 		}
-		gr, gb := scale(floats(r, "gr_gain"), fgr), scale(floats(r, "gb_gain"), fgb)
-		for i := range gr {
-			s.G = append(s.G, (gr[i]+gb[i])/2)
-		}
-		out.Sets = append(out.Sets, s)
-	}
-	sort.Slice(out.Sets, func(i, j int) bool { return out.Sets[i].CT < out.Sets[j].CT })
+		sort.Slice(all, func(i, j int) bool { return all[i].CT < all[j].CT })
 
-	/* Keep one set per colour temperature */
-	var sets []LSCSet
-	for _, s := range out.Sets {
-		if len(sets) == 0 || sets[len(sets)-1].CT != s.CT {
-			sets = append(sets, s)
+		/* Keep one set per colour temperature */
+		var sets []LSCSet
+		for _, s := range all {
+			if len(sets) == 0 || sets[len(sets)-1].CT != s.CT {
+				sets = append(sets, s)
+			}
+		}
+		return sets
+	}
+
+	out := &LSC{Width: isp.LSCWidth, Height: isp.LSCHeight, Calibrated: cal != nil}
+	out.Sets = setsOf(cct)
+
+	/* The other lux regions, if the module has them */
+	if regions, err := luxRegionsFrom(list(lens, "lens_position_data"),
+		str(root, "aec_exp_control") == "lux_idx", o); err == nil {
+		for _, r := range regions {
+			out.ByLux = append(out.ByLux, LSCLux{Start: r.Start, End: r.End, Sets: setsOf(r.CCT)})
 		}
 	}
-	out.Sets = sets
 
 	return out, nil
 }

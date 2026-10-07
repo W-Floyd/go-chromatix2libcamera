@@ -27,6 +27,8 @@ type DRCCurve struct {
 	// GTMShare is the share of the curve CamX applies globally, the rest
 	// by local tone mapping (gtm_percentage, of the lowest DRC region).
 	GTMShare float64
+	// ByLux are the curves of every lux index region.
+	ByLux []LuxDRC
 }
 
 // DRCToneCurve reads tmc12_sw's anchors for the selected lux region, at the
@@ -60,6 +62,42 @@ func DRCToneCurve(f *chromatix.File, o Options) (*DRCCurve, error) {
 		return nil, fmt.Errorf("%s: global tone mapping is disabled", mod.Name)
 	}
 
+	out, err := drcAt(root, mod.Name, o.LuxIdx)
+	if err != nil {
+		return nil, err
+	}
+
+	/*
+	 * The curves of the other lux regions, as the first DRC gain region
+	 * has them (the others' boundaries may differ a little).
+	 */
+	if str(root, "aec_exp_control") == "lux_idx" {
+		first := list(root, "core")[0].(*chromatix.Object)
+		hdr := list(first, "drc_gain_data")[0].(*chromatix.Object)
+		for _, e := range list(hdr, "hdr_aec_data") {
+			t := obj(e.(*chromatix.Object), "aec_trigger")
+			start, end := num(t, "lux_idx_start"), num(t, "lux_idx_end")
+			c, err := drcAt(root, mod.Name, start)
+			if err != nil {
+				return nil, err
+			}
+			out.ByLux = append(out.ByLux, LuxDRC{Start: start, End: end, Curve: c})
+		}
+		sort.SliceStable(out.ByLux, func(i, j int) bool { return out.ByLux[i].Start < out.ByLux[j].Start })
+	}
+	return out, nil
+}
+
+// LuxDRC is the DRC tone mapping of one lux index region.
+type LuxDRC struct {
+	Start, End float64
+	Curve      *DRCCurve
+}
+
+// drcAt reads the anchors of the lux region containing a lux index.
+func drcAt(root *chromatix.Object, module string, lux float64) (*DRCCurve, error) {
+	var err error
+
 	out := &DRCCurve{MaxRatio: num(root, "tone_max_ratio"), GTMShare: -1}
 	byLux := str(root, "aec_exp_control") == "lux_idx"
 	for _, e := range list(root, "core") {
@@ -69,18 +107,18 @@ func DRCToneCurve(f *chromatix.File, o Options) (*DRCCurve, error) {
 		hdr := list(d, "drc_gain_data")[0].(*chromatix.Object)
 		var aec *chromatix.Object
 		if byLux {
-			aec, err = pick(list(hdr, "hdr_aec_data"), "aec", o.LuxIdx, "lux_idx_start", "lux_idx_end")
+			aec, err = pick(list(hdr, "hdr_aec_data"), "aec", lux, "lux_idx_start", "lux_idx_end")
 		} else {
 			aec, err = pick(list(hdr, "hdr_aec_data"), "aec", 1, "gain_start", "gain_end")
 		}
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", mod.Name, err)
+			return nil, fmt.Errorf("%s: %w", module, err)
 		}
 		r := obj(aec, "aec_data")
 		for _, name := range []string{"hist_enhance_ratio"} {
 			for _, x := range list(r, name) {
 				if x.(float64) != 0 {
-					return nil, fmt.Errorf("%s: %s is used; only anchor knee points convert", mod.Name, name)
+					return nil, fmt.Errorf("%s: %s is used; only anchor knee points convert", module, name)
 				}
 			}
 		}
@@ -102,7 +140,7 @@ func DRCToneCurve(f *chromatix.File, o Options) (*DRCCurve, error) {
 	}
 	sort.SliceStable(out.Anchors, func(i, j int) bool { return out.Anchors[i].DRCGain < out.Anchors[j].DRCGain })
 	if len(out.Anchors) == 0 {
-		return nil, fmt.Errorf("%s: no DRC gain regions", mod.Name)
+		return nil, fmt.Errorf("%s: no DRC gain regions", module)
 	}
 	return out, nil
 }

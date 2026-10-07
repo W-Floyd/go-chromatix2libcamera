@@ -293,6 +293,16 @@ func buildTuning(tuned, module, eeprom string, o convert.Options, macro float64)
 		} else if l, err := convert.CCMsByLux(f, o); err == nil {
 			t.Lux = lux
 			t.CCMByLux = l
+			if c, err := convert.ToneCurveByLux(f, o); err == nil {
+				t.ToneCurveByLux = c
+			} else {
+				fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no tone curve by lux index:", err)
+			}
+			if c, err := convert.ChromaByLux(f, o); err == nil {
+				t.ChromaByLux = c
+			} else {
+				fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no chroma enhancement by lux index:", err)
+			}
 		} else {
 			fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no CCMs by lux index:", err)
 		}

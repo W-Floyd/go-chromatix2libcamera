@@ -26,6 +26,27 @@ type ChromaSet struct {
 // taken as it: the tuning stores them to three decimals.
 const cvTolerance = 0.002
 
+// cvModule decodes the cv12 module.
+func cvModule(f *chromatix.File) (*chromatix.Object, string, error) {
+	m, err := baseModule(f, "cv12")
+	if err != nil {
+		return nil, "", err
+	}
+	t, ok := isp.Schema(m)
+	if !ok {
+		return nil, "", fmt.Errorf("no schema for %s %s", m.Name, m.VersionString())
+	}
+	v, err := f.Decode(m, t)
+	if err != nil {
+		return nil, "", err
+	}
+	root := v.(*chromatix.Object)
+	if num(root, "enable") == 0 {
+		return nil, "", fmt.Errorf("%s is disabled", m.Name)
+	}
+	return root, m.Name, nil
+}
+
 // Chroma extracts cv12's chroma enhancement for the selected region, one
 // set per colour temperature. CamX applies it after gamma, as the soft ISP
 // does. In CamX's terms Cb = a * ((B - G) + b * (R - G)): with a = 0.5 and
@@ -33,30 +54,51 @@ const cvTolerance = 0.002
 // is a/2 * (b - CVShearB) / a, i.e. (b - CVShearB) / 2; Cr likewise with
 // c and d. A tuning whose luma weights are not BT.601's is refused.
 func Chroma(f *chromatix.File, o Options) ([]ChromaSet, error) {
-	m, err := baseModule(f, "cv12")
+	root, name, err := cvModule(f)
 	if err != nil {
 		return nil, err
-	}
-	t, ok := isp.Schema(m)
-	if !ok {
-		return nil, fmt.Errorf("no schema for %s %s", m.Name, m.VersionString())
-	}
-	v, err := f.Decode(m, t)
-	if err != nil {
-		return nil, err
-	}
-	root := v.(*chromatix.Object)
-	if num(root, "enable") == 0 {
-		return nil, fmt.Errorf("%s is disabled", m.Name)
 	}
 	cct, err := selectRegion(root, o)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", m.Name, err)
+		return nil, fmt.Errorf("%s: %w", name, err)
 	}
+	return chromaOf(name, cct)
+}
 
-	near := func(r *chromatix.Object, name string, want float64) error {
-		if got := num(r, name); math.Abs(got-want) > cvTolerance {
-			return fmt.Errorf("%s: %s is %g, not BT.601's %g", m.Name, name, got, want)
+// LuxChroma is the chroma enhancement of one lux index region.
+type LuxChroma struct {
+	Start, End float64
+	Sets       []ChromaSet
+}
+
+// ChromaByLux extracts cv12's chroma enhancement of every lux index
+// region, for the soft ISP to select by its own lux index estimate.
+func ChromaByLux(f *chromatix.File, o Options) ([]LuxChroma, error) {
+	root, name, err := cvModule(f)
+	if err != nil {
+		return nil, err
+	}
+	regions, err := luxRegions(root, o)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	var out []LuxChroma
+	for _, r := range regions {
+		s, err := chromaOf(name, r.CCT)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, LuxChroma{Start: r.Start, End: r.End, Sets: s})
+	}
+	return out, nil
+}
+
+// chromaOf reads the chroma enhancement of a region's colour temperature
+// level.
+func chromaOf(name string, cct []chromatix.Value) ([]ChromaSet, error) {
+	near := func(r *chromatix.Object, field string, want float64) error {
+		if got := num(r, field); math.Abs(got-want) > cvTolerance {
+			return fmt.Errorf("%s: %s is %g, not BT.601's %g", name, field, got, want)
 		}
 		return nil
 	}

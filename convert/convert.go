@@ -142,23 +142,64 @@ type Point struct{ X, Y float64 }
 // Chromatix tables are per channel; the green one is used, since libcamera
 // applies one curve to all three (and tuned files usually have them equal).
 func ToneCurve(f *chromatix.File, o Options) ([]Point, error) {
-	m, err := baseModule(f, "gamma15")
+	root, name, err := gammaModule(f)
 	if err != nil {
 		return nil, err
+	}
+	cct, err := selectRegion(root, o)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	return toneCurveOf(name, cct)
+}
+
+// LuxToneCurve is the output curve of one lux index region.
+type LuxToneCurve struct {
+	Start, End float64
+	Curve      []Point
+}
+
+// ToneCurveByLux returns the gamma15 output curve of every lux index
+// region, for the soft ISP to select by its own lux index estimate.
+func ToneCurveByLux(f *chromatix.File, o Options) ([]LuxToneCurve, error) {
+	root, name, err := gammaModule(f)
+	if err != nil {
+		return nil, err
+	}
+	regions, err := luxRegions(root, o)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	var out []LuxToneCurve
+	for _, r := range regions {
+		c, err := toneCurveOf(name, r.CCT)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, LuxToneCurve{Start: r.Start, End: r.End, Curve: c})
+	}
+	return out, nil
+}
+
+// gammaModule decodes the gamma15 module.
+func gammaModule(f *chromatix.File) (*chromatix.Object, string, error) {
+	m, err := baseModule(f, "gamma15")
+	if err != nil {
+		return nil, "", err
 	}
 	t, ok := isp.Schema(m)
 	if !ok {
-		return nil, fmt.Errorf("no schema for %s %s", m.Name, m.VersionString())
+		return nil, "", fmt.Errorf("no schema for %s %s", m.Name, m.VersionString())
 	}
 	v, err := f.Decode(m, t)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	cct, err := selectRegion(v.(*chromatix.Object), o)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", m.Name, err)
-	}
+	return v.(*chromatix.Object), m.Name, nil
+}
 
+// toneCurveOf reads the output curve of a region's colour temperature level.
+func toneCurveOf(name string, cct []chromatix.Value) ([]Point, error) {
 	// Colour temperature: the region containing daylight, or the first.
 	region := cct[0].(*chromatix.Object)
 	for _, e := range cct {
@@ -178,7 +219,7 @@ func ToneCurve(f *chromatix.File, o Options) ([]Point, error) {
 		}
 	}
 	if len(table) != isp.GammaTableLen {
-		return nil, fmt.Errorf("%s: gamma table has %d entries", m.Name, len(table))
+		return nil, fmt.Errorf("%s: gamma table has %d entries", name, len(table))
 	}
 
 	/*
@@ -192,7 +233,7 @@ func ToneCurve(f *chromatix.File, o Options) ([]Point, error) {
 	}
 	fullScale := float64(uint64(1)<<bits.Len64(uint64(maxCode)) - 1)
 	if fullScale <= 0 {
-		return nil, fmt.Errorf("%s: gamma table is all zero", m.Name)
+		return nil, fmt.Errorf("%s: gamma table is all zero", name)
 	}
 
 	last := float64(len(table) - 1)
@@ -349,10 +390,16 @@ type LuxRegion struct {
 // and without flash, in order of lux index. It is selectRegion without the
 // choice, for modules the soft ISP switches by lux index itself.
 func luxRegions(root *chromatix.Object, o Options) ([]LuxRegion, error) {
-	if str(root, "aec_exp_control") != "lux_idx" {
+	return luxRegionsFrom(list(root, "core"), str(root, "aec_exp_control") == "lux_idx", o)
+}
+
+// luxRegionsFrom is luxRegions from the level of a module's tree that
+// starts at the DRC gain (lens shading's starts at the lens position).
+func luxRegionsFrom(core []chromatix.Value, byLux bool, o Options) ([]LuxRegion, error) {
+	if !byLux {
 		return nil, fmt.Errorf("not selected by lux index")
 	}
-	led, err := noFlashRegion(list(root, "core"), o)
+	led, err := noFlashRegion(core, o)
 	if err != nil {
 		return nil, err
 	}

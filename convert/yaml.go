@@ -20,6 +20,10 @@ type Tuning struct {
 	CCMs           []CCM
 	// CCMByLux, if set, is the matrices of every lux index region.
 	CCMByLux []LuxCCMs
+	// ToneCurveByLux and ChromaByLux, if set, are the output curve and
+	// the chroma enhancement of every lux index region.
+	ToneCurveByLux []LuxToneCurve
+	ChromaByLux    []LuxChroma
 	// Lux, if set with LumaZones, gives Agc a lux index model, which the
 	// modules by lux index need.
 	Lux *LuxModel
@@ -180,44 +184,58 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 			b.WriteString("      # Scaled to this unit (EEPROM): golden module level over the unit's\n")
 		}
 		fmt.Fprintf(&b, "      grid: [ %d, %d ]\n      sets:\n", l.Width, l.Height)
-		for _, s := range l.Sets {
-			fmt.Fprintf(&b, "        - ct: %d\n", s.CT)
-			writeGridAt(&b, "          ", "r", s.R, l.Width, "%.3f")
-			writeGridAt(&b, "          ", "g", s.G, l.Width, "%.3f")
-			writeGridAt(&b, "          ", "b", s.B, l.Width, "%.3f")
+		writeLSCSets(&b, "        ", l.Sets, l.Width)
+		if len(l.ByLux) > 0 && t.Lux != nil {
+			b.WriteString("      # The same by lux index (the module's AEC regions), as Ccm's luxSets\n")
+			b.WriteString("      luxSets:\n")
+			for _, r := range l.ByLux {
+				fmt.Fprintf(&b, "        - lux: [ %g, %g ]\n          sets:\n", r.Start, r.End)
+				writeLSCSets(&b, "            ", r.Sets, l.Width)
+			}
 		}
 	}
 	b.WriteString("  - Adjust:\n")
 	if len(t.ToneCurve) > 0 {
 		b.WriteString("      toneCurve: [\n")
-		for i, p := range t.ToneCurve {
-			sep := ","
-			if i == len(t.ToneCurve)-1 {
-				sep = ""
-			}
-			fmt.Fprintf(&b, "        %.6f, %.6f%s\n", p.X, p.Y, sep)
-		}
+		writeTonePoints(&b, "        ", t.ToneCurve)
 		b.WriteString("      ]\n")
+		if len(t.ToneCurveByLux) > 0 && t.Lux != nil {
+			b.WriteString("      # The same by lux index (gamma15's AEC regions), as Ccm's luxSets\n")
+			b.WriteString("      toneCurveLux:\n")
+			for _, r := range t.ToneCurveByLux {
+				fmt.Fprintf(&b, "        - lux: [ %g, %g ]\n          toneCurve: [\n", r.Start, r.End)
+				writeTonePoints(&b, "            ", r.Curve)
+				b.WriteString("          ]\n")
+			}
+		}
 	}
 	if d := t.DRC; d != nil {
 		b.WriteString("      # DRC tone mapping (tmc12_sw's anchor knee points), by DRC gain.\n")
 		fmt.Fprintf(&b, "      # CamX applies %.0f%% of it (in log) globally and the rest by local\n", 100*d.GTMShare)
 		b.WriteString("      # tone mapping, which the soft ISP lacks: all of it applies here.\n")
-		fmt.Fprintf(&b, "      drcCurve:\n        maxRatio: %g\n        anchors:\n", d.MaxRatio)
-		for _, a := range d.Anchors {
-			fmt.Fprintf(&b, "          - drcGain: %.4g\n            tones: [ %.3f, %.3f, %.3f ]\n            darkBoost: %.3f\n            darkBoostRatio: %.3f\n",
-				a.DRCGain, a.Dark, a.Mid, a.Bright, a.DarkBoost, a.DarkBoostRatio)
+		b.WriteString("      drcCurve:\n")
+		writeDRC(&b, "        ", d)
+		if len(d.ByLux) > 0 && t.Lux != nil {
+			b.WriteString("      # The same by lux index (tmc12's AEC regions), as Ccm's luxSets\n")
+			b.WriteString("      drcCurveLux:\n")
+			for _, r := range d.ByLux {
+				fmt.Fprintf(&b, "        - lux: [ %g, %g ]\n          drcCurve:\n", r.Start, r.End)
+				writeDRC(&b, "            ", r.Curve)
+			}
 		}
 	}
 	if len(t.Chroma) > 0 {
 		b.WriteString("      # Chroma enhancement (cv12) after the tone curve, on BT.601\n")
 		b.WriteString("      # chroma by sign: Cb+ (blue), Cb- (yellow), Cr+ (red), Cr- (green)\n")
 		b.WriteString("      chroma:\n")
-		for _, c := range t.Chroma {
-			fmt.Fprintf(&b, "        - ct: %d\n          scale: [ %.3f, %.3f, %.3f, %.3f ]\n",
-				c.CT, c.Scale[0], c.Scale[1], c.Scale[2], c.Scale[3])
-			fmt.Fprintf(&b, "          shear: [ %.4f, %.4f, %.4f, %.4f ]\n",
-				c.Shear[0], c.Shear[1], c.Shear[2], c.Shear[3])
+		writeChroma(&b, "        ", t.Chroma)
+		if len(t.ChromaByLux) > 0 && t.Lux != nil {
+			b.WriteString("      # The same by lux index (cv12's AEC regions), as Ccm's luxSets\n")
+			b.WriteString("      chromaLux:\n")
+			for _, r := range t.ChromaByLux {
+				fmt.Fprintf(&b, "        - lux: [ %g, %g ]\n          chroma:\n", r.Start, r.End)
+				writeChroma(&b, "            ", r.Sets)
+			}
 		}
 	}
 	b.WriteString("  - Agc:\n")
@@ -290,6 +308,46 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 	b.WriteString("...\n")
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// writeLSCSets writes lens shading sets as a list at an indent.
+func writeLSCSets(b *strings.Builder, indent string, sets []LSCSet, width int) {
+	for _, s := range sets {
+		fmt.Fprintf(b, "%s- ct: %d\n", indent, s.CT)
+		writeGridAt(b, indent+"  ", "r", s.R, width, "%.3f")
+		writeGridAt(b, indent+"  ", "g", s.G, width, "%.3f")
+		writeGridAt(b, indent+"  ", "b", s.B, width, "%.3f")
+	}
+}
+
+// writeTonePoints writes a tone curve's points, one pair to a line.
+func writeTonePoints(b *strings.Builder, indent string, pts []Point) {
+	for i, p := range pts {
+		sep := ","
+		if i == len(pts)-1 {
+			sep = ""
+		}
+		fmt.Fprintf(b, "%s%.6f, %.6f%s\n", indent, p.X, p.Y, sep)
+	}
+}
+
+// writeDRC writes a DRC tone mapping's keys at an indent.
+func writeDRC(b *strings.Builder, indent string, d *DRCCurve) {
+	fmt.Fprintf(b, "%smaxRatio: %g\n%sanchors:\n", indent, d.MaxRatio, indent)
+	for _, a := range d.Anchors {
+		fmt.Fprintf(b, "%s  - drcGain: %.4g\n%s    tones: [ %.3f, %.3f, %.3f ]\n%s    darkBoost: %.3f\n%s    darkBoostRatio: %.3f\n",
+			indent, a.DRCGain, indent, a.Dark, a.Mid, a.Bright, indent, a.DarkBoost, indent, a.DarkBoostRatio)
+	}
+}
+
+// writeChroma writes chroma enhancement sets as a list at an indent.
+func writeChroma(b *strings.Builder, indent string, sets []ChromaSet) {
+	for _, c := range sets {
+		fmt.Fprintf(b, "%s- ct: %d\n%s  scale: [ %.3f, %.3f, %.3f, %.3f ]\n",
+			indent, c.CT, indent, c.Scale[0], c.Scale[1], c.Scale[2], c.Scale[3])
+		fmt.Fprintf(b, "%s  shear: [ %.4f, %.4f, %.4f, %.4f ]\n",
+			indent, c.Shear[0], c.Shear[1], c.Shear[2], c.Shear[3])
+	}
 }
 
 // writeCCMs writes colour correction matrices as a list at an indent.
