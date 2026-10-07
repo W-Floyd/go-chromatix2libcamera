@@ -18,6 +18,11 @@ type Tuning struct {
 	// BlackLevelGain, if set, is the black level by sensor gain.
 	BlackLevelGain []GainLevel
 	CCMs           []CCM
+	// CCMByLux, if set, is the matrices of every lux index region.
+	CCMByLux []LuxCCMs
+	// Lux, if set with LumaZones, gives Agc a lux index model, which the
+	// modules by lux index need.
+	Lux *LuxModel
 	// WhitePoints, if set, give Awb its colour temperature curve; OffLocus
 	// are the reference points it has no colour temperature for.
 	WhitePoints, OffLocus []WhitePoint
@@ -43,6 +48,11 @@ type Tuning struct {
 	Chroma []ChromaSet
 	// DRC, if set, gives Adjust its DRC tone mapping.
 	DRC *DRCCurve
+}
+
+// LuxModel is the soft ISP's model of the lux index: see Options.
+type LuxModel struct {
+	RefProduct, PerStop float64
 }
 
 // WriteYAML writes t as a libcamera software ISP tuning file.
@@ -152,12 +162,16 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 	}
 	if len(t.CCMs) > 0 {
 		b.WriteString("  - Ccm:\n      ccms:\n")
-		for _, c := range t.CCMs {
-			fmt.Fprintf(&b, "        - ct: %d\n", c.CT)
-			m := c.Matrix
-			fmt.Fprintf(&b, "          ccm: [ %s, %s, %s,\n", f(m[0]), f(m[1]), f(m[2]))
-			fmt.Fprintf(&b, "                 %s, %s, %s,\n", f(m[3]), f(m[4]), f(m[5]))
-			fmt.Fprintf(&b, "                 %s, %s, %s ]\n", f(m[6]), f(m[7]), f(m[8]))
+		writeCCMs(&b, "        ", t.CCMs)
+		if len(t.CCMByLux) > 0 {
+			b.WriteString("      # The same by lux index (cc13's AEC regions), which Agc estimates;\n")
+			b.WriteString("      # between regions' ranges the matrices blend. Without a lux\n")
+			b.WriteString("      # estimate, the ccms above apply.\n")
+			b.WriteString("      luxSets:\n")
+			for _, r := range t.CCMByLux {
+				fmt.Fprintf(&b, "        - lux: [ %g, %g ]\n          ccms:\n", r.Start, r.End)
+				writeCCMs(&b, "            ", r.CCMs)
+			}
 		}
 	}
 	if l := t.LSC; l != nil && len(l.Sets) > 0 {
@@ -215,6 +229,12 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 		}
 		b.WriteString("\n      # The brightest zone's, as a fraction of full scale:\n")
 		fmt.Fprintf(&b, "      meanTarget: %.4f\n", z.Target/AECLumaFullScale)
+		if l := t.Lux; l != nil {
+			b.WriteString("      # A model of CamX's lux index (its own is not public), which selects\n")
+			b.WriteString("      # the tables by lux index: exposure time (us) x gain at index 250,\n")
+			b.WriteString("      # and index steps per stop of scene brightness. Not measured.\n")
+			fmt.Fprintf(&b, "      lux:\n        refProduct: %g\n        perStop: %g\n", l.RefProduct, l.PerStop)
+		}
 		if h := t.Hist; h != nil && h.Enable && h.ADRC && len(h.Zones) > 0 {
 			hz := h.Zones[0]
 			b.WriteString("      # Histogram luma target, brightest zone (lux index ")
@@ -270,6 +290,17 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 	b.WriteString("...\n")
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// writeCCMs writes colour correction matrices as a list at an indent.
+func writeCCMs(b *strings.Builder, indent string, ccms []CCM) {
+	for _, c := range ccms {
+		fmt.Fprintf(b, "%s- ct: %d\n", indent, c.CT)
+		m := c.Matrix
+		fmt.Fprintf(b, "%s  ccm: [ %s, %s, %s,\n", indent, f(m[0]), f(m[1]), f(m[2]))
+		fmt.Fprintf(b, "%s         %s, %s, %s,\n", indent, f(m[3]), f(m[4]), f(m[5]))
+		fmt.Fprintf(b, "%s         %s, %s, %s ]\n", indent, f(m[6]), f(m[7]), f(m[8]))
+	}
 }
 
 // writeGrid writes a row-major grid as a flow list, one row per line.

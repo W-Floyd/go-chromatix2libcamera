@@ -189,6 +189,8 @@ func cmdConvert(args []string) error {
 	o := convert.DefaultOptions
 	fs.Float64Var(&o.LuxIdx, "lux-idx", o.LuxIdx, "Qualcomm lux index to take the exposure region from (higher is darker)")
 	fs.Float64Var(&o.DRCGain, "drc-gain", o.DRCGain, "DRC gain to take the DRC region from (1 is none)")
+	fs.Float64Var(&o.LuxRefProduct, "lux-ref-product", o.LuxRefProduct, "exposure time (us) x analogue gain of lux index 250 at the luma target, for the lux index model (0: no lux regions)")
+	fs.Float64Var(&o.LuxPerStop, "lux-per-stop", o.LuxPerStop, "lux index steps per stop of scene brightness, for the lux index model")
 	module := fs.String("module", "", "sensor module file (com.qti.sensormodule.*.bin), for the lens actuator")
 	macro := fs.Float64("macro-dioptres", convert.DefaultMacroDioptres,
 		"distance, in dioptres (1/m), the actuator's macro end focuses at, when the calibration gives no distances")
@@ -263,6 +265,14 @@ func buildTuning(tuned, module, eeprom string, o convert.Options, macro float64)
 		PDAF: pdaf,
 	}
 	t.Source = append(t.Source, sources...)
+	if o.LuxRefProduct > 0 && o.LuxPerStop > 0 {
+		t.Lux = &convert.LuxModel{RefProduct: o.LuxRefProduct, PerStop: o.LuxPerStop}
+		if l, err := convert.CCMsByLux(f, o); err == nil {
+			t.CCMByLux = l
+		} else {
+			fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no CCMs by lux index:", err)
+		}
+	}
 	if tc, err := convert.ToneCurve(f, o); err == nil {
 		t.ToneCurve = tc
 		/*

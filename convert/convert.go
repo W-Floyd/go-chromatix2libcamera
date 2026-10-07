@@ -21,10 +21,18 @@ type Options struct {
 	// DRCGain picks the DRC gain region containing this gain; 1 is no
 	// dynamic range compression.
 	DRCGain float64
+	// LuxRefProduct is the exposure time (us) times analogue gain at which
+	// a scene of lux index 250 meets the AEC luma target, and LuxPerStop
+	// the lux index steps of a stop of scene brightness. They model
+	// CamX's lux index, which is not public, for the soft ISP to select
+	// the tuning's lux regions with; 0 leaves the model out, and the
+	// regions with it.
+	LuxRefProduct, LuxPerStop float64
 }
 
-// DefaultOptions are ordinary indoor light, no flash, no DRC.
-var DefaultOptions = Options{LuxIdx: 250, DRCGain: 1}
+// DefaultOptions are ordinary indoor light, no flash, no DRC. The lux model
+// is a placeholder, not measured against CamX's.
+var DefaultOptions = Options{LuxIdx: 250, DRCGain: 1, LuxRefProduct: 40000, LuxPerStop: 36}
 
 // CCM is one colour correction matrix at a colour temperature, in
 // libcamera's row-major RGB order.
@@ -54,26 +62,62 @@ func baseModule(f *chromatix.File, base string) (chromatix.Symbol, error) {
 	return chromatix.Symbol{}, fmt.Errorf("no %s module", base)
 }
 
-// CCMs extracts the colour correction matrices for the selected region.
-func CCMs(f *chromatix.File, o Options) ([]CCM, error) {
+// ccModule decodes the cc13 module.
+func ccModule(f *chromatix.File) (*chromatix.Object, string, error) {
 	m, err := baseModule(f, "cc13")
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	t, ok := isp.Schema(m)
 	if !ok {
-		return nil, fmt.Errorf("no schema for %s %s", m.Name, m.VersionString())
+		return nil, "", fmt.Errorf("no schema for %s %s", m.Name, m.VersionString())
 	}
 	v, err := f.Decode(m, t)
 	if err != nil {
+		return nil, "", err
+	}
+	return v.(*chromatix.Object), m.Name, nil
+}
+
+// CCMs extracts the colour correction matrices for the selected region.
+func CCMs(f *chromatix.File, o Options) ([]CCM, error) {
+	root, name, err := ccModule(f)
+	if err != nil {
 		return nil, err
 	}
-
-	cct, err := selectRegion(v.(*chromatix.Object), o)
+	cct, err := selectRegion(root, o)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", m.Name, err)
+		return nil, fmt.Errorf("%s: %w", name, err)
 	}
+	return ccmsOf(cct), nil
+}
 
+// LuxCCMs are the colour correction matrices of one lux index region.
+type LuxCCMs struct {
+	Start, End float64
+	CCMs       []CCM
+}
+
+// CCMsByLux extracts the colour correction matrices of every lux index
+// region, for the soft ISP to select by its own lux index estimate.
+func CCMsByLux(f *chromatix.File, o Options) ([]LuxCCMs, error) {
+	root, name, err := ccModule(f)
+	if err != nil {
+		return nil, err
+	}
+	regions, err := luxRegions(root, o)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	var out []LuxCCMs
+	for _, r := range regions {
+		out = append(out, LuxCCMs{Start: r.Start, End: r.End, CCMs: ccmsOf(r.CCT)})
+	}
+	return out, nil
+}
+
+// ccmsOf reads the matrices of a region's colour temperature level.
+func ccmsOf(cct []chromatix.Value) []CCM {
 	var out []CCM
 	for _, e := range cct {
 		r := e.(*chromatix.Object)
@@ -86,7 +130,7 @@ func CCMs(f *chromatix.File, o Options) ([]CCM, error) {
 		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CT < out[j].CT })
-	return dedupeCT(out), nil
+	return dedupeCT(out)
 }
 
 // Point is a point of a tone curve, both coordinates in [0, 1].
@@ -274,21 +318,9 @@ func selectRegion(root *chromatix.Object, o Options) ([]chromatix.Value, error) 
 // selectFromDRC walks the tree from its DRC gain level down, for modules
 // whose tree has levels above it (lens shading starts at lens position).
 func selectFromDRC(core []chromatix.Value, aecByLux bool, o Options) ([]chromatix.Value, error) {
-	drc, err := pick(core, "drc_gain", o.DRCGain, "start", "end")
+	led, err := noFlashRegion(core, o)
 	if err != nil {
 		return nil, err
-	}
-	// HDR ratio: the first region is the non-HDR one.
-	hdr := list(drc, "drc_gain_data")[0].(*chromatix.Object)
-	var led *chromatix.Object
-	for _, e := range list(hdr, "hdr_aec_data") {
-		if l := e.(*chromatix.Object); int64Of(get(l, "led_idx_trigger")) == 0 {
-			led = l
-			break
-		}
-	}
-	if led == nil {
-		return nil, fmt.Errorf("no region without flash")
 	}
 	var aec *chromatix.Object
 	if aecByLux {
@@ -301,6 +333,60 @@ func selectFromDRC(core []chromatix.Value, aecByLux bool, o Options) ([]chromati
 		return nil, err
 	}
 	return list(aec, "aec_data"), nil
+}
+
+// LuxRegion is one lux index region of a module's tuning: from lux index
+// Start to End (Qualcomm's lux index grows as the scene darkens), the
+// colour temperature level, as selectRegion returns for a single region.
+// Between two regions' ranges CamX interpolates.
+type LuxRegion struct {
+	Start, End float64
+	CCT        []chromatix.Value
+}
+
+// luxRegions returns every lux index region of a module, at the DRC gain
+// and without flash, in order of lux index. It is selectRegion without the
+// choice, for modules the soft ISP switches by lux index itself.
+func luxRegions(root *chromatix.Object, o Options) ([]LuxRegion, error) {
+	if str(root, "aec_exp_control") != "lux_idx" {
+		return nil, fmt.Errorf("not selected by lux index")
+	}
+	led, err := noFlashRegion(list(root, "core"), o)
+	if err != nil {
+		return nil, err
+	}
+	var out []LuxRegion
+	for _, e := range list(led, "led_idx_data") {
+		r := e.(*chromatix.Object)
+		t := obj(r, "aec_trigger")
+		out = append(out, LuxRegion{
+			Start: num(t, "lux_idx_start"),
+			End:   num(t, "lux_idx_end"),
+			CCT:   list(r, "aec_data"),
+		})
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no lux index regions")
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Start < out[j].Start })
+	return out, nil
+}
+
+// noFlashRegion walks a module's tree from its DRC gain level to the
+// flash-off level, whose children are the AEC regions.
+func noFlashRegion(core []chromatix.Value, o Options) (*chromatix.Object, error) {
+	drc, err := pick(core, "drc_gain", o.DRCGain, "start", "end")
+	if err != nil {
+		return nil, err
+	}
+	// HDR ratio: the first region is the non-HDR one.
+	hdr := list(drc, "drc_gain_data")[0].(*chromatix.Object)
+	for _, e := range list(hdr, "hdr_aec_data") {
+		if l := e.(*chromatix.Object); int64Of(get(l, "led_idx_trigger")) == 0 {
+			return l, nil
+		}
+	}
+	return nil, fmt.Errorf("no region without flash")
 }
 
 // pick returns the region whose [start, end] trigger contains x or, when x
