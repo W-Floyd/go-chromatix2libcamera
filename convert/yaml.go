@@ -230,10 +230,10 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 		b.WriteString("\n      # The brightest zone's, as a fraction of full scale:\n")
 		fmt.Fprintf(&b, "      meanTarget: %.4f\n", z.Target/AECLumaFullScale)
 		if l := t.Lux; l != nil {
-			b.WriteString("      # A model of CamX's lux index (its own is not public), which selects\n")
-			b.WriteString("      # the tables by lux index: exposure time (us) x gain at index 250,\n")
-			b.WriteString("      # and index steps per stop of scene brightness. Not measured.\n")
-			fmt.Fprintf(&b, "      lux:\n        refProduct: %g\n        perStop: %g\n", l.RefProduct, l.PerStop)
+			b.WriteString("      # CamX's lux index, which selects the tables by lux index, from the\n")
+			b.WriteString("      # tuning's exposure table (expKneeEntries): exposure time (us) x gain\n")
+			b.WriteString("      # at index 250, and index steps per stop of scene brightness.\n")
+			fmt.Fprintf(&b, "      lux:\n        refProduct: %.6g\n        perStop: %.6g\n", l.RefProduct, l.PerStop)
 		}
 		if h := t.Hist; h != nil && h.Enable && h.ADRC && len(h.Zones) > 0 {
 			hz := h.Zones[0]

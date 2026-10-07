@@ -189,8 +189,9 @@ func cmdConvert(args []string) error {
 	o := convert.DefaultOptions
 	fs.Float64Var(&o.LuxIdx, "lux-idx", o.LuxIdx, "Qualcomm lux index to take the exposure region from (higher is darker)")
 	fs.Float64Var(&o.DRCGain, "drc-gain", o.DRCGain, "DRC gain to take the DRC region from (1 is none)")
-	fs.Float64Var(&o.LuxRefProduct, "lux-ref-product", o.LuxRefProduct, "exposure time (us) x analogue gain of lux index 250 at the luma target, for the lux index model (0: no lux regions)")
-	fs.Float64Var(&o.LuxPerStop, "lux-per-stop", o.LuxPerStop, "lux index steps per stop of scene brightness, for the lux index model")
+	fs.BoolVar(&o.NoLux, "no-lux", o.NoLux, "leave out the lux index model and the tables by lux index")
+	fs.Float64Var(&o.LuxRefProduct, "lux-ref-product", o.LuxRefProduct, "exposure time (us) x analogue gain of lux index 250 at the luma target, instead of the tuning's exposure table's")
+	fs.Float64Var(&o.LuxPerStop, "lux-per-stop", o.LuxPerStop, "lux index steps per stop of scene brightness, instead of the tuning's exposure table's")
 	module := fs.String("module", "", "sensor module file (com.qti.sensormodule.*.bin), for the lens actuator")
 	macro := fs.Float64("macro-dioptres", convert.DefaultMacroDioptres,
 		"distance, in dioptres (1/m), the actuator's macro end focuses at, when the calibration gives no distances")
@@ -206,6 +207,26 @@ func cmdConvert(args []string) error {
 		return err
 	}
 	return t.WriteYAML(os.Stdout)
+}
+
+// luxModel is the lux index model of the tuning's exposure table, with any
+// of its two numbers the options set.
+func luxModel(f *chromatix.File, o convert.Options) (*convert.LuxModel, error) {
+	knees, err := convert.AECKnees(f)
+	if err != nil {
+		return nil, err
+	}
+	m, err := convert.LuxFromKnees(knees)
+	if err != nil {
+		return nil, err
+	}
+	if o.LuxRefProduct > 0 {
+		m.RefProduct = o.LuxRefProduct
+	}
+	if o.LuxPerStop > 0 {
+		m.PerStop = o.LuxPerStop
+	}
+	return m, nil
 }
 
 // buildTuning converts a tuned file and, if named, the sensor module file
@@ -265,9 +286,12 @@ func buildTuning(tuned, module, eeprom string, o convert.Options, macro float64)
 		PDAF: pdaf,
 	}
 	t.Source = append(t.Source, sources...)
-	if o.LuxRefProduct > 0 && o.LuxPerStop > 0 {
-		t.Lux = &convert.LuxModel{RefProduct: o.LuxRefProduct, PerStop: o.LuxPerStop}
-		if l, err := convert.CCMsByLux(f, o); err == nil {
+	if !o.NoLux {
+		lux, err := luxModel(f, o)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no lux index model:", err)
+		} else if l, err := convert.CCMsByLux(f, o); err == nil {
+			t.Lux = lux
 			t.CCMByLux = l
 		} else {
 			fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no CCMs by lux index:", err)

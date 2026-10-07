@@ -21,18 +21,19 @@ type Options struct {
 	// DRCGain picks the DRC gain region containing this gain; 1 is no
 	// dynamic range compression.
 	DRCGain float64
+	// NoLux leaves out the lux index model, and the lux regions with it.
+	NoLux bool
 	// LuxRefProduct is the exposure time (us) times analogue gain at which
 	// a scene of lux index 250 meets the AEC luma target, and LuxPerStop
-	// the lux index steps of a stop of scene brightness. They model
-	// CamX's lux index, which is not public, for the soft ISP to select
-	// the tuning's lux regions with; 0 leaves the model out, and the
-	// regions with it.
+	// the lux index steps of a stop of scene brightness: the soft ISP's
+	// model of CamX's lux index, which selects the tuning's lux regions.
+	// Both are taken from the tuning's exposure table (LuxFromKnees)
+	// unless set.
 	LuxRefProduct, LuxPerStop float64
 }
 
-// DefaultOptions are ordinary indoor light, no flash, no DRC. The lux model
-// is a placeholder, not measured against CamX's.
-var DefaultOptions = Options{LuxIdx: 250, DRCGain: 1, LuxRefProduct: 40000, LuxPerStop: 36}
+// DefaultOptions are ordinary indoor light, no flash, no DRC.
+var DefaultOptions = Options{LuxIdx: 250, DRCGain: 1}
 
 // CCM is one colour correction matrix at a colour temperature, in
 // libcamera's row-major RGB order.

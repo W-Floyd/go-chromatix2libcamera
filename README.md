@@ -32,6 +32,15 @@ software ISP indexes by colour temperature only, so one exposure region is
 chosen: `-lux-idx` (Qualcomm lux index, higher is darker; default 250,
 ordinary indoor light) and `-drc-gain` (default 1).
 
+The colour correction matrices of every lux region are also written, as
+`Ccm`'s `luxSets`, with a lux index model for `Agc` (`lux`): the lux index is
+the exposure index of CamX's exposure table, which the tuning's
+`expKneeEntries` gives at nine knees of gain and exposure time, and which is
+23.45 index steps (a step is 3% of sensitivity) per stop of gain x exposure
+time. `-no-lux` leaves both out; `-lux-ref-product` and `-lux-per-stop`
+override the table's. The soft ISP needs the `pdaf` branch's lux selection
+("ipa: soft: Select the colour correction by lux index") to use them.
+
 `toneCurve` is not in upstream libcamera: it needs the software ISP change on
 the `softisp-af` branch of github.com/W-Floyd/libcamera ("software_isp: Apply
 the tone curve from a lookup table"). Without it, libcamera ignores the key.
