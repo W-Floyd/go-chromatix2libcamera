@@ -25,6 +25,8 @@ type Options struct {
 	NoLux bool
 	// NoDenoise leaves out the noise reduction's tuning.
 	NoDenoise bool
+	// NoSharpen leaves out the sharpening's tuning.
+	NoSharpen bool
 	// LuxRefProduct is the exposure time (us) times analogue gain at which
 	// a scene of lux index 250 meets the AEC luma target, and LuxPerStop
 	// the lux index steps of a stop of scene brightness: the soft ISP's

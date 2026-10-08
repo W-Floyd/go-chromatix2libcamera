@@ -22,6 +22,8 @@ type Tuning struct {
 	CCMByLux []LuxCCMs
 	// Denoise, if set, adds the Denoise algorithm.
 	Denoise []DenoiseRegion
+	// Sharpen, if set, adds the Sharpen algorithm.
+	Sharpen []SharpenRegion
 	// ToneCurveByLux and ChromaByLux, if set, are the output curve and
 	// the chroma enhancement of every lux index region.
 	ToneCurveByLux []LuxToneCurve
@@ -220,6 +222,24 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 			fmt.Fprintf(&b, "          anchors: [ %.4g, %.4g ]\n", d.AnchorLo, d.AnchorHi)
 		}
 	}
+	if len(t.Sharpen) > 0 {
+		b.WriteString("  - Sharpen:\n")
+		b.WriteString("      # The adaptive spatial filter (asf32) by gain: one high-pass layer on the luma\n")
+		b.WriteString("      # after the tone curve, luma + clamp(gain x detail), the gain of overshoot and\n")
+		b.WriteString("      # of undershoot by the luma's level (64 steps, capped), weighted by the detail's\n")
+		b.WriteString("      # activity (64 steps of the 8-bit luma over 4, which cores out noise), the change\n")
+		b.WriteString("      # limited to the clamps (8-bit luma units); amplitude is the band-pass kernel's\n")
+		b.WriteString("      # difference of Gaussians' amplitude.\n")
+		b.WriteString("      regions:\n")
+		for _, r := range t.Sharpen {
+			fmt.Fprintf(&b, "        - gain: [ %.4g, %.4g ]\n", r.GainStart, r.GainEnd)
+			fmt.Fprintf(&b, "          amplitude: %.3g\n          cap: %.4g\n", r.Amplitude, r.Cap)
+			fmt.Fprintf(&b, "          clamp: [ %.4g, %.4g ]\n", r.ClampLow, r.ClampHigh)
+			writeLUT(&b, "positive", r.Positive[:])
+			writeLUT(&b, "negative", r.Negative[:])
+			writeLUT(&b, "weight", r.Weight[:])
+		}
+	}
 	b.WriteString("  - Adjust:\n")
 	if len(t.ToneCurve) > 0 {
 		b.WriteString("      toneCurve: [\n")
@@ -357,6 +377,22 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 }
 
 // writeLSCSets writes lens shading sets as a list at an indent.
+// writeLUT writes a lookup table of a Sharpen region, as a list over a few
+// lines.
+func writeLUT(b *strings.Builder, key string, v []float64) {
+	fmt.Fprintf(b, "          %s: [", key)
+	for i, x := range v {
+		if i%16 == 0 {
+			b.WriteString("\n            ")
+		}
+		fmt.Fprintf(b, "%.4g,", x)
+		if i%16 != 15 {
+			b.WriteString(" ")
+		}
+	}
+	b.WriteString("\n          ]\n")
+}
+
 // writeHistZone writes the keys of Agc's histogram, for one lux zone.
 func writeHistZone(b *strings.Builder, indent string, hz HistZone, h *HistTarget) {
 	fmt.Fprintf(b, "%ssatRef: %.4f\n", indent, hz.SatRefHigh/AECLumaFullScale)
