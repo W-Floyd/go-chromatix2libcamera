@@ -62,6 +62,9 @@ type LuxModel struct {
 	// MaxExposureUs is the longest exposure time (us) the exposure
 	// table reaches.
 	MaxExposureUs float64
+	// ExposureByGain is the exposure table's path, the exposure time (us)
+	// it reaches at each gain: (gain, us) pairs.
+	ExposureByGain [][2]float64
 }
 
 // WriteYAML writes t as a libcamera software ISP tuning file.
@@ -279,6 +282,18 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 				b.WriteString("      # The longest exposure time (us) the tuning's exposure table reaches: the\n")
 				b.WriteString("      # frame is lengthened (vertical blanking) for it in the dark\n")
 				fmt.Fprintf(&b, "      maxExposure: %.0f\n", l.MaxExposureUs)
+				if len(l.ExposureByGain) > 1 {
+					b.WriteString("      # and the exposure time (us) the table has at each gain (pairs), which the\n")
+					b.WriteString("      # frame is lengthened along, as the stock AEC raises exposure with gain\n")
+					b.WriteString("      exposureByGain: [")
+					for i, p := range l.ExposureByGain {
+						if i > 0 {
+							b.WriteString(",")
+						}
+						fmt.Fprintf(&b, " %.4g, %.0f", p[0], p[1])
+					}
+					b.WriteString(" ]\n")
+				}
 			}
 		}
 		if h := t.Hist; h != nil && h.Enable && h.ADRC && len(h.Zones) > 0 {

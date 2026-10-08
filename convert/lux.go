@@ -98,13 +98,16 @@ func LuxFromKnees(knees []KneeEntry) (*LuxModel, error) {
 	}
 
 	var longest float64
+	var path [][2]float64
 	for _, k := range knees {
 		longest = math.Max(longest, k.ExpTimeNs/1000)
+		path = append(path, [2]float64{k.Gain, k.ExpTimeNs / 1000})
 	}
 
 	return &LuxModel{
-		RefProduct:    math.Exp2((250 - offset) / perStop),
-		PerStop:       perStop,
-		MaxExposureUs: longest,
+		RefProduct:     math.Exp2((250 - offset) / perStop),
+		PerStop:        perStop,
+		MaxExposureUs:  longest,
+		ExposureByGain: path,
 	}, nil
 }
