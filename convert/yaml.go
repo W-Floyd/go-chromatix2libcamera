@@ -38,6 +38,8 @@ type Tuning struct {
 	AWBCal *calibration.AWB
 	// GainAdjust, if set, gives Awb its gain adjustment.
 	GainAdjust *GainAdjust
+	// CTPrior, if set with Lux, gives Awb its illuminant weights by lux index.
+	CTPrior []LuxCTWeights
 	// ToneCurve, if set, goes to Adjust's toneCurve.
 	ToneCurve []Point
 	// AF, if set, adds the Af algorithm with the actuator's travel.
@@ -171,6 +173,21 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 					}
 					b.WriteString(" ]\n")
 				}
+			}
+		}
+		if len(t.CTPrior) > 0 && t.Lux != nil {
+			b.WriteString("      # Illuminant weights (SFIlluWVV1) by lux index: how plausible each\n")
+			b.WriteString("      # colour temperature is at that scene brightness. [ ct, weight, ... ]\n")
+			b.WriteString("      ctPrior:\n")
+			for _, r := range t.CTPrior {
+				fmt.Fprintf(&b, "        - lux: [ %g, %g ]\n          weights: [", r.Start, r.End)
+				for i, w := range r.Weights {
+					if i > 0 {
+						b.WriteString(",")
+					}
+					fmt.Fprintf(&b, " %g, %.3f", w.CT, w.Weight)
+				}
+				b.WriteString(" ]\n")
 			}
 		}
 	}

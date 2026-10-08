@@ -26,7 +26,9 @@ go-chromatix2libcamera convert  -module com.qti.sensormodule.<module>.bin \
 colour correction matrices (`cc13`) as `Ccm`, lens shading (`lsc34`/`lsc35`)
 as `Lsc`, the output curve (`gamma15`) as `Adjust`'s `toneCurve`, the AEC
 luma targets (`Metering`) as `Agc`'s `meanTarget` and `histogram` (the brightest
-zone) and, by lux index, `meanTargetLux` and `histogramLux`, and with
+zone) and, by lux index, `meanTargetLux` and `histogramLux`, the AWB
+illuminant weights (`SFIlluWVV1`) as `Awb`'s `ctPrior` by lux index (not
+yet read by libcamera), and with
 `-module` the lens actuator's travel as `Af`'s `map`. Chromatix selects most tables by exposure
 (and DRC gain, flash, ...) as well as colour temperature, while libcamera's
 software ISP indexes by colour temperature only, so one exposure region is

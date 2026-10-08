@@ -38,3 +38,22 @@ var RefPtIlluminants = []string{
 var RefPtCT = map[int]int{
 	0: 12000, 1: 7500, 2: 6500, 3: 5000, 5: 4000, 7: 2850, 8: 2300, 9: 1500,
 }
+
+// SFIlluWVV1 is the AWB illuminant weight vector (no public XSD; layout from
+// fogona's tuned files): for each lux index region, a weight on each range of
+// colour temperature, how plausible an illuminant there is at that scene
+// brightness. Ranges whose start equals their end are points. The two fields
+// after enable are 0 in every file seen.
+var SFIlluWVV1 = TStruct(
+	F("module_id", AWBModuleID),
+	F("module_version", ModuleVersion),
+	F("enable", TInt),
+	F("reserved", TArray(2, TInt)),
+	F("lux_weights", TList(TStruct(
+		F("trigger", Trigger),
+		F("cct_weights", TList(TStruct(
+			F("cct", Trigger),
+			F("weight", TFloat),
+		))),
+	))),
+)

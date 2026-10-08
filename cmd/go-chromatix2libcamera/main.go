@@ -322,6 +322,11 @@ func buildTuning(tuned, module, eeprom string, o convert.Options, macro float64)
 			} else {
 				fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no chroma enhancement by lux index:", err)
 			}
+			if p, err := convert.AWBIlluminantPrior(f); err == nil {
+				t.CTPrior = p
+			} else {
+				fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no AWB illuminant weights:", err)
+			}
 		} else {
 			fmt.Fprintln(os.Stderr, "go-chromatix2libcamera: no CCMs by lux index:", err)
 		}
