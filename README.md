@@ -25,7 +25,8 @@ go-chromatix2libcamera convert  -module com.qti.sensormodule.<module>.bin \
 `BlackLevel`, the AWB white points (`refPtV1`) as `Awb`'s `colourGains`, the
 colour correction matrices (`cc13`) as `Ccm`, lens shading (`lsc34`/`lsc35`)
 as `Lsc`, the output curve (`gamma15`) as `Adjust`'s `toneCurve`, the AEC
-luma targets (`Metering`) as `Agc`'s `meanTarget` and `histogram`, and with
+luma targets (`Metering`) as `Agc`'s `meanTarget` and `histogram` (the brightest
+zone) and, by lux index, `meanTargetLux` and `histogramLux`, and with
 `-module` the lens actuator's travel as `Af`'s `map`. Chromatix selects most tables by exposure
 (and DRC gain, flash, ...) as well as colour temperature, while libcamera's
 software ISP indexes by colour temperature only, so one exposure region is
@@ -126,7 +127,7 @@ data exactly fails to decode.
 | `lsc34`, `lsc35` | 3.4.0, 3.5.0 | yes | `Lsc`: the lens position nearest infinity, one set per colour temperature, the greens averaged |
 | `demuxblklevel14` (TFE) | 1.4.0 | yes (layout inferred, no public XSD) | `BlackLevel` |
 | `refPtV1` (AWB) | 1.0.0 | yes | `Awb: colourGains`: the points on CamX's daylight locus, at the colour temperatures its AWB gives them (below) |
-| `Metering` (AEC) | 8.0.1 | the luma target zones only | `Agc: meanTarget`, `histogram` (brightest zone) |
+| `Metering` (AEC) | 8.0.1 | the luma target zones only | `Agc: meanTarget`, `histogram` (brightest zone), `meanTargetLux`, `histogramLux` |
 | `actuatorDriver` (sensor module) | 1.0.0 | yes (one slot more than the public XSD) | `Af: map`; the macro end's distance is `-macro-dioptres` (default 10, i.e. 10 cm), since the module gives codes, not distances |
 
 ### AWB reference points

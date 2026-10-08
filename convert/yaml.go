@@ -282,19 +282,22 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 				fmt.Fprintf(&b, " %.4g", math.Min(z.MaxDRCGain, z.MaxADRCGain))
 			}
 			b.WriteString("\n      histogram:\n")
-			fmt.Fprintf(&b, "        satRef: %.4f\n", hz.SatRefHigh/AECLumaFullScale)
-			fmt.Fprintf(&b, "        satRange: [ %.4g, %.4g ]\n", hz.SatPushdownRange[1][0], hz.SatPushdownRange[1][1])
-			fmt.Fprintf(&b, "        pushupRange: [ %.4g, %.4g ]\n", hz.SatPushupRange[1][0], hz.SatPushupRange[1][1])
-			fmt.Fprintf(&b, "        targetAdj: [ %.4g, %.4g ]\n", hz.MinTargetAdjRatio, hz.MaxTargetAdjRatio)
-			fmt.Fprintf(&b, "        maxDrcGain: %.4g\n", math.Min(hz.MaxDRCGain, hz.MaxADRCGain))
-			fmt.Fprintf(&b, "        filter: %.4g\n", h.Filter)
-			if h.DarkBoost && hz.MaxDarkBoostGain > 1 {
-				fmt.Fprintf(&b, "        # Dark boost: darkest G pixels' floor (darkRefLow %g of %g), lifted by\n",
-					hz.DarkRefLow, AECLumaFullScale)
-				b.WriteString("        # the tone curve by at most maxDarkBoost more than the DRC gain\n")
-				fmt.Fprintf(&b, "        darkRef: %.4f\n", hz.DarkRefLow/AECLumaFullScale)
-				fmt.Fprintf(&b, "        darkRange: [ %.4g, %.4g ]\n", hz.DarkRange[1][0], hz.DarkRange[1][1])
-				fmt.Fprintf(&b, "        maxDarkBoost: %.4g\n", hz.MaxDarkBoostGain)
+			writeHistZone(&b, "        ", hz, h)
+		}
+		if len(t.LumaZones) > 1 {
+			b.WriteString("      # The luma target by lux index zone, blended across the gaps\n")
+			b.WriteString("      meanTargetLux:\n")
+			for _, lz := range t.LumaZones {
+				fmt.Fprintf(&b, "        - lux: [ %g, %g ]\n          meanTarget: %.4f\n",
+					lz.Start, lz.End, lz.Target/AECLumaFullScale)
+			}
+		}
+		if h := t.Hist; h != nil && h.Enable && h.ADRC && len(h.Zones) > 1 {
+			b.WriteString("      # The histogram adjustment by lux index zone\n")
+			b.WriteString("      histogramLux:\n")
+			for _, z := range h.Zones {
+				fmt.Fprintf(&b, "        - lux: [ %g, %g ]\n", z.Start, z.End)
+				writeHistZone(&b, "          ", z, h)
 			}
 		}
 	}
@@ -331,6 +334,24 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 }
 
 // writeLSCSets writes lens shading sets as a list at an indent.
+// writeHistZone writes the keys of Agc's histogram, for one lux zone.
+func writeHistZone(b *strings.Builder, indent string, hz HistZone, h *HistTarget) {
+	fmt.Fprintf(b, "%ssatRef: %.4f\n", indent, hz.SatRefHigh/AECLumaFullScale)
+	fmt.Fprintf(b, "%ssatRange: [ %.4g, %.4g ]\n", indent, hz.SatPushdownRange[1][0], hz.SatPushdownRange[1][1])
+	fmt.Fprintf(b, "%spushupRange: [ %.4g, %.4g ]\n", indent, hz.SatPushupRange[1][0], hz.SatPushupRange[1][1])
+	fmt.Fprintf(b, "%stargetAdj: [ %.4g, %.4g ]\n", indent, hz.MinTargetAdjRatio, hz.MaxTargetAdjRatio)
+	fmt.Fprintf(b, "%smaxDrcGain: %.4g\n", indent, math.Min(hz.MaxDRCGain, hz.MaxADRCGain))
+	fmt.Fprintf(b, "%sfilter: %.4g\n", indent, h.Filter)
+	if h.DarkBoost && hz.MaxDarkBoostGain > 1 {
+		fmt.Fprintf(b, "%s# Dark boost: darkest G pixels' floor (darkRefLow %g of %g), lifted by\n",
+			indent, hz.DarkRefLow, AECLumaFullScale)
+		fmt.Fprintf(b, "%s# the tone curve by at most maxDarkBoost more than the DRC gain\n", indent)
+		fmt.Fprintf(b, "%sdarkRef: %.4f\n", indent, hz.DarkRefLow/AECLumaFullScale)
+		fmt.Fprintf(b, "%sdarkRange: [ %.4g, %.4g ]\n", indent, hz.DarkRange[1][0], hz.DarkRange[1][1])
+		fmt.Fprintf(b, "%smaxDarkBoost: %.4g\n", indent, hz.MaxDarkBoostGain)
+	}
+}
+
 func writeLSCSets(b *strings.Builder, indent string, sets []LSCSet, width int) {
 	for _, s := range sets {
 		fmt.Fprintf(b, "%s- ct: %d\n", indent, s.CT)
