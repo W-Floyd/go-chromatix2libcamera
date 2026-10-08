@@ -59,6 +59,9 @@ type Tuning struct {
 // LuxModel is the soft ISP's model of the lux index: see Options.
 type LuxModel struct {
 	RefProduct, PerStop float64
+	// MaxExposureUs is the longest exposure time (us) the exposure
+	// table reaches.
+	MaxExposureUs float64
 }
 
 // WriteYAML writes t as a libcamera software ISP tuning file.
@@ -272,6 +275,11 @@ func (t *Tuning) WriteYAML(w io.Writer) error {
 			b.WriteString("      # tuning's exposure table (expKneeEntries): exposure time (us) x gain\n")
 			b.WriteString("      # at index 250, and index steps per stop of scene brightness.\n")
 			fmt.Fprintf(&b, "      lux:\n        refProduct: %.6g\n        perStop: %.6g\n", l.RefProduct, l.PerStop)
+			if l.MaxExposureUs > 0 {
+				b.WriteString("      # The longest exposure time (us) the tuning's exposure table reaches: the\n")
+				b.WriteString("      # frame is lengthened (vertical blanking) for it in the dark\n")
+				fmt.Fprintf(&b, "      maxExposure: %.0f\n", l.MaxExposureUs)
+			}
 		}
 		if h := t.Hist; h != nil && h.Enable && h.ADRC && len(h.Zones) > 0 {
 			hz := h.Zones[0]
