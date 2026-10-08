@@ -1,6 +1,7 @@
 package convert
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -14,6 +15,10 @@ import (
 // calibration gives no distances: 10 dioptres is 10 cm, a typical phone
 // module's minimum focus distance.
 const DefaultMacroDioptres = 10.0
+
+// ErrNoActuator is returned for a sensor module with no focus actuator (a
+// fixed focus camera).
+var ErrNoActuator = errors.New("no actuatorDriver")
 
 // MapPoint is one point of libcamera's Af map.
 type MapPoint struct {
@@ -55,7 +60,7 @@ func ActuatorFromFile(f *chromatix.File) (*Actuator, error) {
 			InitialCode: int(num(o, "initialCode")),
 		}, nil
 	}
-	return nil, fmt.Errorf("no actuatorDriver")
+	return nil, ErrNoActuator
 }
 
 // BuildAFMap derives the Af map. With per-unit calibration it uses the

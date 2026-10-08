@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -246,7 +247,7 @@ func buildTuning(tuned, module, eeprom string, o convert.Options, macro float64)
 		}
 		sources = append(sources, filepath.Base(module))
 		act, err := convert.ActuatorFromFile(mf)
-		if err != nil {
+		if err != nil && !errors.Is(err, convert.ErrNoActuator) {
 			return nil, fmt.Errorf("%s: %w", module, err)
 		}
 		var cal *calibration.AF
@@ -266,8 +267,10 @@ func buildTuning(tuned, module, eeprom string, o convert.Options, macro float64)
 				}
 			}
 		}
-		a := convert.BuildAFMap(act, cal, macro)
-		af = &a
+		if act != nil {
+			a := convert.BuildAFMap(act, cal, macro)
+			af = &a
+		}
 	} else if eeprom != "" {
 		return nil, fmt.Errorf("-eeprom needs -module")
 	}
