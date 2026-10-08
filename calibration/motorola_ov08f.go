@@ -13,23 +13,34 @@ import (
 // passes. Values are big-endian.
 //
 //	0x00-0x25  module information block, CRC-16/BUYPASS at 0x26: flag,
-//	           revision, part number (8 ASCII characters at 0x04), lens
-//	           id at 0x0d, integrator (two letters) at 0x0e, factory at
-//	           0x10, line at 0x12, date (year, month, day) at 0x13,
-//	           serial number at 0x16
+//	           revision, part number (8 ASCII characters at 0x04, which
+//	           the library prefixes with "SC"), lens id at 0x0d,
+//	           integrator (two letters) at 0x0e, factory at 0x10, line
+//	           (ASCII) at 0x12, date (year, month, day) at 0x13, serial
+//	           number at 0x16
 //	0x28-0x53  white balance block, CRC at 0x54: at 0x2f the R/G and B/G
-//	           tolerances (min, max; one byte each, in 1/1000), at 0x3b
-//	           the golden module's R/G, B/G, Gr/Gb, at 0x49 the unit's
-//	           (16-bit each, in 1/16384), under D50
+//	           tolerances (R/G lower and upper, B/G lower and upper; one
+//	           byte each, read as 1/1000), at 0x33 and 0x41 the golden
+//	           module's and the unit's raw R, Gr, Gb, B averages (16-bit
+//	           each; with black level 4096 they give the ratios below),
+//	           at 0x3b the golden module's R/G, B/G, Gr/Gb and at 0x49
+//	           the unit's (16-bit each, in 1/16384), under D50
 //	0x9c-0x784 lens shading block, CRC at 0x785: a flat field's level at
-//	           each of 17x13 points, for R, Gr, Gb, B (16-bit each,
-//	           1023 at the centre), under D50, in the sensor's own
-//	           orientation (the library does not turn them)
+//	           each of 17x13 points (204 pixel cells of the 3264x2448
+//	           frame), for R, Gr, Gb, B (16-bit each, 1023 at the
+//	           centre), under D50, in the sensor's own orientation: row
+//	           0 is the top of the default readout, and the library does
+//	           not turn the tables
 //
-// The unit has no AF data (a fixed focus lens). The tolerance bytes'
-// order and the lens shading channel order are inferred from the
-// S5KJNS layout and the data's look (R falls off most, B least; Gr and
-// Gb nearly equal).
+// Other blocks of the image, with the same flag and CRC, that the library
+// does not read: the optical centre per channel in pixels (0x56), what
+// looks like sharpness test results (0x69), and from 0x787 a lens shading
+// calibration in MediaTek's format. The unit has no AF data (a fixed focus
+// lens). The library's tolerance read overlaps (its last one takes in the
+// golden R average's high byte), so stock accepts any unit; the bytes are
+// clearly meant as four bytes of 50, and Parse checks them as such. The
+// lens shading channel order follows CamX's slot order, and the data's
+// look (R falls off most, B least; Gr and Gb nearly equal).
 type motorolaOV08F struct{}
 
 var motorolaOV08FNames = []string{
@@ -91,7 +102,7 @@ func (motorolaOV08F) Detect(m *Module, image []byte) bool {
 func (motorolaOV08F) Parse(m *Module, image []byte) (*Calibration, error) {
 	info := ovBlock(image, ovInfoOff, ovInfoLen, ovInfoCRCOff)
 	c := &Calibration{
-		ModuleID: strings.TrimRight(string(info[ovPartOff:ovPartOff+ovPartLen]), "\x00\xff "),
+		ModuleID: "SC" + strings.TrimRight(string(info[ovPartOff:ovPartOff+ovPartLen]), "\x00\xff "),
 	}
 
 	if b := ovBlock(image, ovWBOff, ovWBLen, ovWBCRCOff); b != nil {

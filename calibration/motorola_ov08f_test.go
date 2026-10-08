@@ -44,7 +44,7 @@ func TestMotorolaOV08F(t *testing.T) {
 		if err != nil {
 			t.Fatalf("bank %d: %v", bank, err)
 		}
-		if c.Format != "motorola-ov08f-otp" || c.ModuleID != "28E65604" {
+		if c.Format != "motorola-ov08f-otp" || c.ModuleID != "SC28E65604" {
 			t.Errorf("bank %d: format %q module %q", bank, c.Format, c.ModuleID)
 		}
 		if c.AF != nil {
