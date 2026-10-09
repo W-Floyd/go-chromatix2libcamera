@@ -46,12 +46,35 @@ func TestGuessNumber(t *testing.T) {
 		{0, int64(0)},
 		{5, int64(5)},
 		{0xffffffff, int64(-1)},
-		{0x3f800000, 1.0},
-		{0xbf800000, -1.0},
+		{0x3f800000, GuessedFloat(1.0)},
+		{0xbf800000, GuessedFloat(-1.0)},
 		{100000000, int64(100000000)},
 	} {
 		if got := guessNumber(c.w); got != c.want {
 			t.Errorf("guessNumber(%#x) = %v, want %v", c.w, got, c.want)
 		}
+	}
+}
+
+// Strings and packed lists that do not fill whole slots are padded to them.
+func TestGenericPadded(t *testing.T) {
+	b := &builder{}
+	name := b.add("mod_x_name", 0, NoGroup, append([]byte("EnableDepth\x00"), make([]byte, 4)...)) // 12 characters, 16 bytes
+	nums := b.add("mod_x_nums", 0, NoGroup, slots(1<<32|2, 3))                                     // 3 numbers, 16 bytes
+	mod := b.add("x01_ope", 1|1<<16, 4, slots(12, name, 3, nums, fbits(900)))
+
+	f, err := Parse(b.bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, _ := f.Symbol(mod)
+	got, err := json.Marshal(f.Generic(s))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"s0":{"ref":"mod_x_name","count":12,"string":"EnableDepth"},` +
+		`"s2":{"ref":"mod_x_nums","count":3,"items":[2,1,3]},"s4":900.0}`
+	if string(got) != want {
+		t.Errorf("Generic:\n got %s\nwant %s", got, want)
 	}
 }

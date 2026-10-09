@@ -235,6 +235,8 @@ func cmdDump(args []string) error {
 		if t, ok := isp.Schema(s); ok && !*generic {
 			if v, err = f.Decode(s, t); err == nil {
 				entry["decoded"] = "schema"
+			} else {
+				entry["schema_error"] = err.Error()
 			}
 		}
 		if v == nil {

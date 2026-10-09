@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 )
 
 // Most of a tuning file's modules have no public schema (the file names
@@ -24,10 +25,11 @@ import (
 //     count elements fill the symbol's data;
 //   - a slot with something in its upper half is two packed numbers;
 //   - a number is a float where its bit pattern is one of a plausible
-//     magnitude (a hundred millionth to 1e19), and an integer otherwise.
+//     magnitude (1e-9 to 1e19), and an integer otherwise.
 //
 // A wrong guess misleads about one value, never about where the next is, and
-// the guess is stated: floats and integers are different JSON types.
+// the guess is stated: floats are written with a decimal point (900.0),
+// integers without.
 
 // maxGenericDepth is how deep references are followed; the files' nesting is
 // a few levels.
@@ -96,10 +98,20 @@ func (f *File) genericRef(d []byte, depth int, path map[uint64]bool) (Value, boo
 		return nil, false
 	}
 	rd := f.Data(ref)
-	if uint64(len(rd)) < count || uint64(len(rd))%count != 0 {
+	size := uint64(len(rd))
+
+	// A list of characters or packed numbers that does not fill whole slots
+	// is padded to them, which is not an element size.
+	padded := func(unit uint64) bool { return count*unit <= size && (count*unit+slot-1)/slot*slot == size }
+	var elem uint64
+	switch {
+	case size >= count && size%count == 0:
+		elem = size / count
+	case padded(1) || padded(4):
+		elem = 0
+	default:
 		return nil, false
 	}
-	elem := uint64(len(rd)) / count
 
 	o := &Object{
 		Names:  []string{"ref", "count"},
@@ -107,8 +119,8 @@ func (f *File) genericRef(d []byte, depth int, path map[uint64]bool) (Value, boo
 	}
 
 	// Characters.
-	if elem == 1 {
-		if s, ok := printable(rd); ok {
+	if elem == 1 || ((elem == 0 || elem%slot != 0) && padded(1)) {
+		if s, ok := printable(rd[:count]); ok {
 			o.Names = append(o.Names, "string")
 			o.Values = append(o.Values, s)
 			return o, true
@@ -120,10 +132,16 @@ func (f *File) genericRef(d []byte, depth int, path map[uint64]bool) (Value, boo
 
 	var items []Value
 	switch {
-	case elem%slot == 0:
+	case elem != 0 && elem%slot == 0:
 		for k := uint64(0); k < count; k++ {
 			items = append(items, f.generic(rd[k*elem:(k+1)*elem], depth+1, path))
 		}
+	case elem == 0 && padded(4):
+		for k := uint64(0); k < count; k++ {
+			items = append(items, guessNumber(le.Uint32(rd[k*4:])))
+		}
+	case elem == 0:
+		return nil, false
 	case elem%4 == 0:
 		// Packed numbers.
 		for k := uint64(0); k < uint64(len(rd))/4; k++ {
@@ -137,6 +155,18 @@ func (f *File) genericRef(d []byte, depth int, path map[uint64]bool) (Value, boo
 	return o, true
 }
 
+// GuessedFloat is a float that guessNumber found, written with a decimal point
+// even when it is whole, so that the output tells it from an integer.
+type GuessedFloat float64
+
+func (x GuessedFloat) MarshalJSON() ([]byte, error) {
+	s := strconv.FormatFloat(float64(x), 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eE") {
+		s += ".0"
+	}
+	return []byte(s), nil
+}
+
 // guessNumber types a 32-bit value: a float if its bits are a float of a
 // plausible magnitude, an integer (signed) otherwise.
 func guessNumber(w uint32) Value {
@@ -147,7 +177,7 @@ func guessNumber(w uint32) Value {
 		// Rounded to what a float32 holds, for output that is not all digits.
 		x := float64(math.Float32frombits(w))
 		r, _ := strconv.ParseFloat(strconv.FormatFloat(x, 'g', 7, 32), 64)
-		return r
+		return GuessedFloat(r)
 	}
 	return int64(int32(w))
 }
