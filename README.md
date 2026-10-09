@@ -17,6 +17,8 @@ go-chromatix2libcamera modules  com.qti.tuned.<sensor>.bin   # list tuning modul
 go-chromatix2libcamera symbols  -name 'cc13' <file>          # list parameter elements
 go-chromatix2libcamera hex      <file> <id|name>             # raw data, as 32-bit words
 go-chromatix2libcamera decode   <file> gamma15_ope           # decode a module, as JSON
+go-chromatix2libcamera dump     [-name RE] <file>            # every module, as JSON
+go-chromatix2libcamera catalog  [-name RE] <file>            # what each kind of module holds
 go-chromatix2libcamera convert  -module com.qti.sensormodule.<module>.bin \
                                 com.qti.tuned.<sensor>.bin > <sensor>.yaml
 ```
