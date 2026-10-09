@@ -29,6 +29,13 @@ Commands:
   hex <file> <id|name>...   dump a symbol's data as 32-bit words, naming
                             any word that matches a symbol id
   decode <file> <id|name>   decode a module with its schema, as JSON
+  catalog [-name RE] [-slots N] <file>
+                            summarise each kind of module: instances, size,
+                            the elements it refers to, and which slots the
+                            instances share and which they tune
+  dump [-name RE] [-generic] <file>
+                            every module, as JSON: by its schema where there
+                            is one, and by its slots where there is not
   convert [-lux-idx N] [-drc-gain G] [-module sensormodule.bin
           [-eeprom image] [-macro-dioptres D]] <tuned.bin>
                             write a libcamera software ISP tuning file
@@ -57,6 +64,10 @@ func main() {
 		err = cmdHex(args)
 	case "decode":
 		err = cmdDecode(args)
+	case "dump":
+		err = cmdDump(args)
+	case "catalog":
+		err = cmdCatalog(args)
 	case "convert":
 		err = cmdConvert(args)
 	case "calibration":
@@ -179,6 +190,59 @@ func cmdDecode(args []string) error {
 			"id": s.ID, "name": s.Name, "version": s.VersionString(),
 			"group": s.Group, "value": v,
 		})
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", " ")
+	return enc.Encode(out)
+}
+
+// cmdDump writes every top-level module of a file, or those matching a
+// name: by its schema where there is one (named fields), and otherwise
+// generically (fields named by their slot), so that none of what the vendor
+// tuned is out of reach.
+func cmdDump(args []string) error {
+	fs := flag.NewFlagSet("dump", flag.ContinueOnError)
+	name := fs.String("name", "", "only modules whose name matches this regular expression")
+	generic := fs.Bool("generic", false, "decode even the modules that have a schema generically")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("dump takes one file")
+	}
+	var re *regexp.Regexp
+	if *name != "" {
+		var err error
+		if re, err = regexp.Compile(*name); err != nil {
+			return err
+		}
+	}
+	f, err := load(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+
+	var out []any
+	for _, s := range f.Modules() {
+		if re != nil && !re.MatchString(s.Name) {
+			continue
+		}
+		entry := map[string]any{
+			"id": s.ID, "name": s.Name, "version": s.VersionString(),
+			"group": s.Group, "size": s.Size,
+		}
+		var v chromatix.Value
+		if t, ok := isp.Schema(s); ok && !*generic {
+			if v, err = f.Decode(s, t); err == nil {
+				entry["decoded"] = "schema"
+			}
+		}
+		if v == nil {
+			v = f.Generic(s)
+			entry["decoded"] = "generic"
+		}
+		entry["value"] = v
+		out = append(out, entry)
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", " ")
