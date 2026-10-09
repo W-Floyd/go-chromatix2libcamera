@@ -55,7 +55,7 @@ the tone curve from a lookup table"). Without it, libcamera ignores the key.
 On the device, typically at boot once the vendor partition is mounted,
 `generate` writes the tuning file of every camera a small per-device JSON
 config describes (default `/etc/go-chromatix2libcamera.json`) to
-`/etc/libcamera/ipa/soft/<sensor>.yaml`:
+`/etc/libcamera/ipa/softisp/<sensor>.yaml`:
 
 ```json
 {

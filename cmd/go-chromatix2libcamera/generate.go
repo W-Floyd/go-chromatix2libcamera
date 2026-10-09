@@ -20,8 +20,8 @@ const defaultConfig = "/etc/go-chromatix2libcamera.json"
 
 // defaultOutput is libcamera's directory for the software ISP's tuning
 // files outside the package (libcamera looks there before
-// /usr/share/libcamera/ipa/soft).
-const defaultOutput = "/etc/libcamera/ipa/soft"
+// /usr/share/libcamera/ipa/softisp).
+const defaultOutput = "/etc/libcamera/ipa/softisp"
 
 // Config describes a device's cameras for generate.
 //
