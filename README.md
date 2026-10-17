@@ -1,3 +1,11 @@
+# Warning!
+
+This is LLM generated, part of my prototyping a method to generate libcamera tuning files from stock tuning, in such a way that phones can automatically do this without redistributing stock file.
+It outputs lots of formats that stock libcamera does not, and likely *never will* support, as part of my experimentation.
+That being said, I still think others might find it interesting, so here it is.
+
+Caveat emptor.
+
 # go-chromatix2libcamera
 
 Reads Qualcomm CamX Chromatix tuning files (`com.qti.tuned.*.bin`,
